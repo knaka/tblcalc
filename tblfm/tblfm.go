@@ -58,7 +58,7 @@ var getRegexps = sync.OnceValue(func() *regexps {
 // parseCellPosition parses a cell position specification like "@2$3", "$4", "@3"
 // Returns (row, col) where -1 means "any" (not specified)
 // currentRow and currentCol are 1-based positions used for relative references
-func parseCellPosition(pos string, startRow int, tableLen int, rowLen int, currentRow int, currentCol int) (row int, col int) {
+func parseCellPosition(pos string, tableLen int, rowLen int, currentRow int, currentCol int) (row int, col int) {
 	row = -1
 	col = -1
 
@@ -76,18 +76,18 @@ func parseCellPosition(pos string, startRow int, tableLen int, rowLen int, curre
 
 	// Parse row
 	if rowSpec != "" {
-		switch {
-		case rowSpec == "<":
+		switch rowSpec {
+		case "<":
 			row = 0 // First row (header if exists)
-		case rowSpec == "<<":
+		case "<<":
 			row = 1 // Second row
-		case rowSpec == "<<<":
+		case "<<<":
 			row = 2 // Third row
-		case rowSpec == ">":
+		case ">":
 			row = tableLen - 1
-		case rowSpec == ">>":
+		case ">>":
 			row = tableLen - 2
-		case rowSpec == ">>>":
+		case ">>>":
 			row = tableLen - 3
 		default:
 			rowNum, _ := strconv.Atoi(rowSpec)
@@ -102,18 +102,18 @@ func parseCellPosition(pos string, startRow int, tableLen int, rowLen int, curre
 
 	// Parse column
 	if colSpec != "" {
-		switch {
-		case colSpec == "<":
+		switch colSpec {
+		case "<":
 			col = 0
-		case colSpec == "<<":
+		case "<<":
 			col = 1
-		case colSpec == "<<<":
+		case "<<<":
 			col = 2
-		case colSpec == ">":
+		case ">":
 			col = rowLen - 1
-		case colSpec == ">>":
+		case ">>":
 			col = rowLen - 2
-		case colSpec == ">>>":
+		case ">>>":
 			col = rowLen - 3
 		default:
 			colNum, _ := strconv.Atoi(colSpec)
@@ -191,12 +191,12 @@ func Apply(
 		}
 
 		// Parse start position (no current position for target specification)
-		targetStartRow, targetStartCol := parseCellPosition(startPosSpec, dataStartRow, len(table), maxRowLen, 0, 0)
+		targetStartRow, targetStartCol := parseCellPosition(startPosSpec, len(table), maxRowLen, 0, 0)
 
 		// Parse end position (if range specified)
-		var targetEndRow, targetEndCol int = -1, -1
+		var targetEndRow, targetEndCol = -1, -1
 		if endPosSpec != "" {
-			targetEndRow, targetEndCol = parseCellPosition(endPosSpec, dataStartRow, len(table), maxRowLen, 0, 0)
+			targetEndRow, targetEndCol = parseCellPosition(endPosSpec, len(table), maxRowLen, 0, 0)
 		}
 
 		// Determine target range
@@ -314,18 +314,18 @@ func evaluateExpression(L *lua.LState, expression string, table [][]string, curr
 		if rowSpec == "" {
 			sourceRow = currentRow - 1 // 1-based to 0-based
 		} else {
-			switch {
-			case rowSpec == "<":
+			switch rowSpec {
+			case "<":
 				sourceRow = 0
-			case rowSpec == "<<":
+			case "<<":
 				sourceRow = 1
-			case rowSpec == "<<<":
+			case "<<<":
 				sourceRow = 2
-			case rowSpec == ">":
+			case ">":
 				sourceRow = len(table) - 1
-			case rowSpec == ">>":
+			case ">>":
 				sourceRow = len(table) - 2
-			case rowSpec == ">>>":
+			case ">>>":
 				sourceRow = len(table) - 3
 			default:
 				rowNum, _ := strconv.Atoi(rowSpec)
@@ -339,18 +339,18 @@ func evaluateExpression(L *lua.LState, expression string, table [][]string, curr
 
 		// Determine source column
 		var sourceCol int
-		switch {
-		case colSpec == "<":
+		switch colSpec {
+		case "<":
 			sourceCol = 0
-		case colSpec == "<<":
+		case "<<":
 			sourceCol = 1
-		case colSpec == "<<<":
+		case "<<<":
 			sourceCol = 2
-		case colSpec == ">":
+		case ">":
 			sourceCol = len(table[sourceRow]) - 1
-		case colSpec == ">>":
+		case ">>":
 			sourceCol = len(table[sourceRow]) - 2
-		case colSpec == ">>>":
+		case ">>>":
 			sourceCol = len(table[sourceRow]) - 3
 		default:
 			colNum, _ := strconv.Atoi(colSpec)
@@ -387,18 +387,18 @@ func evaluateExpression(L *lua.LState, expression string, table [][]string, curr
 		rowSpec := matches[1]
 		var sourceRow int
 
-		switch {
-		case rowSpec == "<":
+		switch rowSpec {
+		case "<":
 			sourceRow = 0
-		case rowSpec == "<<":
+		case "<<":
 			sourceRow = 1
-		case rowSpec == "<<<":
+		case "<<<":
 			sourceRow = 2
-		case rowSpec == ">":
+		case ">":
 			sourceRow = len(table) - 1
-		case rowSpec == ">>":
+		case ">>":
 			sourceRow = len(table) - 2
-		case rowSpec == ">>>":
+		case ">>>":
 			sourceRow = len(table) - 3
 		default:
 			rowNum, _ := strconv.Atoi(rowSpec)
@@ -463,8 +463,8 @@ func expandRange(startPos, endPos string, table [][]string, currentRow, currentC
 		}
 	}
 
-	startRow, startCol := parseCellPosition(startPos, dataStartRow, len(table), maxRowLen, currentRow, currentCol)
-	endRow, endCol := parseCellPosition(endPos, dataStartRow, len(table), maxRowLen, currentRow, currentCol)
+	startRow, startCol := parseCellPosition(startPos, len(table), maxRowLen, currentRow, currentCol)
+	endRow, endCol := parseCellPosition(endPos, len(table), maxRowLen, currentRow, currentCol)
 
 	var values []any
 

@@ -55,10 +55,10 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 			var reader io.Reader
 			if inPath == stdinFileName {
 				if params.inPlace {
-					return fmt.Errorf("Cannot use in-place mode with standard input")
+					return fmt.Errorf("cannot use in-place mode with standard input")
 				}
 				if inputFormat == tblcalc.InputFormatNone {
-					return fmt.Errorf("Must specify input format with standard input")
+					return fmt.Errorf("must specify input format with standard input")
 				}
 				reader = params.stdin
 			} else {
@@ -70,14 +70,14 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 					case ".tsv":
 						inputFormat = tblcalc.InputFormatTSV
 					default:
-						return fmt.Errorf("Unexpected file extension \"%s\"", ext)
+						return fmt.Errorf("unexpected file extension \"%s\"", ext)
 					}
 				}
 				inFile, err = os.Open(inPath)
 				if err != nil {
-					return fmt.Errorf("Failed to open input file: %s Error: %v", inPath, err)
+					return fmt.Errorf("failed to open input file: %s Error: %v", inPath, err)
 				}
-				defer inFile.Close()
+				defer (func() { _ = inFile.Close() })()
 				reader = inFile
 			}
 			var outFile *os.File
@@ -89,15 +89,17 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 						outputFormat = tblcalc.OutputFormatCSV
 					case tblcalc.InputFormatTSV:
 						outputFormat = tblcalc.OutputFormatTSV
+					case tblcalc.InputFormatNone:
+						panic("058e65e")
 					}
 				}
 				outFile, err = os.CreateTemp("", appID)
 				if err != nil {
-					return fmt.Errorf("Failed to create temporary output file: %v", err)
+					return fmt.Errorf("failed to create temporary output file: %v", err)
 				}
 				defer func() {
-					outFile.Close()
-					os.Remove(outFile.Name())
+					_ = outFile.Close()
+					_ = os.Remove(outFile.Name())
 				}()
 				writer = outFile
 			} else {
@@ -111,22 +113,22 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 				outputFormat,
 			)
 			if err != nil {
-				return fmt.Errorf("Failed to preprocess: %v", err)
+				return fmt.Errorf("failed to preprocess: %v", err)
 			}
 			err = bufOut.Flush()
 			if err != nil {
-				return fmt.Errorf("Failed to flush output: %v", err)
+				return fmt.Errorf("failed to flush output: %v", err)
 			}
 			if params.inPlace {
 				err = outFile.Close()
 				if err != nil {
-					return fmt.Errorf("Failed to close output file: %s Error: %v", outFile.Name(), err)
+					return fmt.Errorf("failed to close output file: %s Error: %v", outFile.Name(), err)
 				}
 				// Compare the original file with the output file
 				var outContent []byte
 				outContent, err = os.ReadFile(outFile.Name())
 				if err != nil {
-					return fmt.Errorf("Failed to read output file: %s", outFile.Name())
+					return fmt.Errorf("failed to read output file: %s", outFile.Name())
 				}
 				source := Value(os.ReadFile(inPath))
 				if bytes.Equal(source, outContent) {
@@ -136,12 +138,12 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 				var origFile *os.File
 				origFile, err = os.OpenFile(inPath, os.O_WRONLY|os.O_TRUNC, 0)
 				if err != nil {
-					return fmt.Errorf("Failed to open original file for writing: %s Error: %v", inPath, err)
+					return fmt.Errorf("failed to open original file for writing: %s Error: %v", inPath, err)
 				}
-				defer origFile.Close()
+				defer (func() { _ = origFile.Close() })()
 				_, err = origFile.Write(outContent)
 				if err != nil {
-					return fmt.Errorf("Failed to write to original file: %s Error: %v", inPath, err)
+					return fmt.Errorf("failed to write to original file: %s Error: %v", inPath, err)
 				}
 			}
 			return nil
@@ -169,7 +171,7 @@ func main() {
 		params.isTerm = true
 	} else {
 		bufStdout := bufio.NewWriter(os.Stdout)
-		defer bufStdout.Flush()
+		defer (func() { _ = bufStdout.Flush() })()
 		params.stdout = bufStdout
 	}
 	var shouldPrintHelp bool

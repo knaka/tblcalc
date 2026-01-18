@@ -46,11 +46,11 @@ func vmeanFunction(L *lua.LState) int {
 
 // vmaxFunction is a Lua function to find the maximum value.
 func vmaxFunction(L *lua.LState) int {
-	var max float64
+	var maxVal float64
 	var hasValue bool
 	processTable(L, func(v float64) {
-		if !hasValue || v > max {
-			max = v
+		if !hasValue || v > maxVal {
+			maxVal = v
 			hasValue = true
 		}
 	})
@@ -58,17 +58,17 @@ func vmaxFunction(L *lua.LState) int {
 		L.Push(lua.LNumber(0))
 		return 1
 	}
-	L.Push(lua.LNumber(max))
+	L.Push(lua.LNumber(maxVal))
 	return 1
 }
 
 // vminFunction is a Lua function to find the minimum value.
 func vminFunction(L *lua.LState) int {
-	var min float64
+	var minVal float64
 	var hasValue bool
 	processTable(L, func(v float64) {
-		if !hasValue || v < min {
-			min = v
+		if !hasValue || v < minVal {
+			minVal = v
 			hasValue = true
 		}
 	})
@@ -76,7 +76,7 @@ func vminFunction(L *lua.LState) int {
 		L.Push(lua.LNumber(0))
 		return 1
 	}
-	L.Push(lua.LNumber(min))
+	L.Push(lua.LNumber(minVal))
 	return 1
 }
 

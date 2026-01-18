@@ -119,8 +119,8 @@ func processWithTBLFMLib(
 		case InputFormatTSV:
 			csvReader = csv.NewReader(strings.NewReader(line))
 			csvReader.Comma = '\t'
-		default:
-			return fmt.Errorf("unsupported input format: %v", inputFormat)
+		case InputFormatNone:
+			panic("983d695")
 		}
 
 		record, err2 := csvReader.Read()
@@ -149,8 +149,8 @@ func processWithTBLFMLib(
 	case OutputFormatTSV:
 		csvWriter = csv.NewWriter(writer)
 		csvWriter.Comma = '\t'
-	default:
-		return fmt.Errorf("unsupported output format: %v", outputFormat)
+	case OutputFormatNone:
+		panic("cbb4884")
 	}
 
 	tableLineNum := 0
