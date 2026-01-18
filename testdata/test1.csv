@@ -1,7 +1,7 @@
 # Product list
 #
-# +TBLFM: $4=$2*$3
-# +TBLFM: $5=$2*$3
+#+TBLFM: $4=$2*$3
+#+TBLFM: $5=$2*$3
 #
 "Product","Unit Price",Stock,Total,Total2
 Apple,100,50,,

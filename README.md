@@ -31,7 +31,7 @@ Input file (test.csv):
 ```csv
 # Product list
 #
-# +TBLFM: $4=$2*$3
+#+TBLFM: $4=$2*$3
 #
 "Product","Unit Price",Stock,Total
 Apple,100,50,
@@ -43,7 +43,7 @@ After processing with `tblcalc test.csv`:
 ```csv
 # Product list
 #
-# +TBLFM: $4=$2*$3
+#+TBLFM: $4=$2*$3
 #
 "Product","Unit Price",Stock,Total
 Apple,100,50,5000
@@ -130,8 +130,8 @@ Example: `vsum(@2$3..@>$3)` calculates the sum of column 3 from row 2 to the las
 ### Multiple Formulas
 
 Multiple formulas can be specified with:
-- Multiple `# +TBLFM:` lines
-- Separated by `::` in a single line: `# +TBLFM: $4=$2*$3 :: $5=$2+$3`
+- Multiple `#+TBLFM:` lines
+- Separated by `::` in a single line: `#+TBLFM: $4=$2*$3::$5=$2+$3`
 
 ### Important Note
 
