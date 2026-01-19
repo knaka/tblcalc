@@ -17,10 +17,8 @@ import (
 type InputFormat int
 
 const (
-	// InputFormatNone indicates no format is specified.
-	InputFormatNone InputFormat = iota
 	// InputFormatCSV indicates CSV (Comma-Separated Values) format.
-	InputFormatCSV
+	InputFormatCSV InputFormat = iota
 	// InputFormatTSV indicates TSV (Tab-Separated Values) format.
 	InputFormatTSV
 )
@@ -29,10 +27,8 @@ const (
 type OutputFormat int
 
 const (
-	// OutputFormatNone indicates no format is specified.
-	OutputFormatNone OutputFormat = iota
 	// OutputFormatCSV indicates CSV (Comma-Separated Values) format.
-	OutputFormatCSV
+	OutputFormatCSV OutputFormat = iota
 	// OutputFormatTSV indicates TSV (Tab-Separated Values) format.
 	OutputFormatTSV
 )
@@ -56,9 +52,6 @@ func Execute(
 	err error,
 ) {
 	var formulas []string
-	_ = inputFormat
-	_ = outputFormat
-
 	// Use bufio.Reader to read line by line
 	bufReader := bufio.NewReader(reader)
 	var commentBlock strings.Builder
@@ -78,13 +71,11 @@ func Execute(
 			formulas = append(formulas, formula)
 		}
 	}
-
 	// Reconstruct reader with this line and remaining content
 	reader = io.MultiReader(
 		strings.NewReader(commentBlock.String()),
 		bufReader,
 	)
-
 	return processWithTBLFMLib(reader, inputFormat, writer, outputFormat, formulas)
 }
 
@@ -99,7 +90,6 @@ func processWithTBLFMLib(
 ) {
 	var table [][]string
 	commentLines := make(map[int]string)
-
 	// Read input line by line, preserving comments
 	scanner := bufio.NewScanner(reader)
 	lineNum := 0
@@ -110,71 +100,84 @@ func processWithTBLFMLib(
 			lineNum++
 			continue
 		}
-
+		var record []string
 		// Parse CSV or TSV line
-		var csvReader *csv.Reader
 		switch inputFormat {
 		case InputFormatCSV:
-			csvReader = csv.NewReader(strings.NewReader(line))
+			csvReader := csv.NewReader(strings.NewReader(line))
+			record, err = csvReader.Read()
+			if err != nil {
+				return fmt.Errorf("failed to parse CSV line %d: %v", lineNum, err)
+			}
 		case InputFormatTSV:
-			csvReader = csv.NewReader(strings.NewReader(line))
-			csvReader.Comma = '\t'
-		case InputFormatNone:
-			panic("983d695")
+			record = strings.Split(line, "\t")
 		}
-
-		record, err2 := csvReader.Read()
-		if err2 != nil {
-			return fmt.Errorf("failed to parse line %d: %v", lineNum, err2)
-		}
-
 		table = append(table, record)
 		lineNum++
 	}
-
 	if err = scanner.Err(); err != nil {
 		return err
 	}
-
 	// Apply formulas
 	if table, err = tblfm.Apply(table, formulas, tblfm.WithHeader(true)); err != nil {
 		return fmt.Errorf("failed to apply formulas: %v", err)
 	}
-
 	// Write output with comments preserved
-	var csvWriter *csv.Writer
 	switch outputFormat {
 	case OutputFormatCSV:
-		csvWriter = csv.NewWriter(writer)
+		return writeCSV(writer, table, commentLines, lineNum)
 	case OutputFormatTSV:
-		csvWriter = csv.NewWriter(writer)
-		csvWriter.Comma = '\t'
-	case OutputFormatNone:
-		panic("cbb4884")
+		return writeTSV(writer, table, commentLines, lineNum)
 	}
+	return
+}
 
+func writeCSV(writer io.Writer, table [][]string, commentLines map[int]string, lineNum int) error {
+	csvWriter := csv.NewWriter(writer)
+	defer csvWriter.Flush()
 	tableLineNum := 0
-	for i := 0; i < lineNum; i++ {
+	for i := range lineNum {
 		if comment, isComment := commentLines[i]; isComment {
+			// Flush CSV writer before writing comment line directly
+			csvWriter.Flush()
+			if err := csvWriter.Error(); err != nil {
+				return err
+			}
 			// Write comment line
-			if _, err = fmt.Fprintln(writer, comment); err != nil {
+			if _, err := fmt.Fprintln(writer, comment); err != nil {
 				return err
 			}
 		} else {
 			// Write table row
 			if tableLineNum < len(table) {
-				if err = csvWriter.Write(table[tableLineNum]); err != nil {
+				if err := csvWriter.Write(table[tableLineNum]); err != nil {
 					return err
 				}
 				tableLineNum++
 			}
 		}
 	}
+	return csvWriter.Error()
+}
 
-	csvWriter.Flush()
-	if err = csvWriter.Error(); err != nil {
-		return err
+func writeTSV(writer io.Writer, table [][]string, commentLines map[int]string, lineNum int) error {
+	tableLineNum := 0
+	for i := range lineNum {
+		if comment, isComment := commentLines[i]; isComment {
+			// Write comment line
+			if _, err := fmt.Fprintln(writer, comment); err != nil {
+				return err
+			}
+		} else {
+			// Write table row as tab-separated values
+			if tableLineNum < len(table) {
+				line := strings.Join(table[tableLineNum], "\t")
+				if _, err := fmt.Fprintln(writer, line); err != nil {
+					return err
+				}
+				tableLineNum++
+			}
+		}
 	}
-
 	return nil
 }

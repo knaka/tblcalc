@@ -1,4 +1,3 @@
-// Main package.
 package main
 
 import (
@@ -32,9 +31,9 @@ type tblcalcParams struct {
 	verbose bool
 	colored bool
 
-	inPlace            bool
-	forcedInputFormat  tblcalc.InputFormat
-	forcedOutputFormat tblcalc.OutputFormat
+	inPlace               bool
+	optForcedInputFormat  *tblcalc.InputFormat
+	optForcedOutputFormat *tblcalc.OutputFormat
 }
 
 // stdinFileName is a special name for standard input.
@@ -49,20 +48,23 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 	}
 	for _, inPath := range params.args {
 		err = func() error {
-			inputFormat := params.forcedInputFormat
-			outputFormat := params.forcedOutputFormat
-			var inFile *os.File
+			var inputFormat tblcalc.InputFormat
+			var optInFile *os.File
 			var reader io.Reader
 			if inPath == stdinFileName {
 				if params.inPlace {
 					return fmt.Errorf("cannot use in-place mode with standard input")
 				}
-				if inputFormat == tblcalc.InputFormatNone {
+				if params.optForcedInputFormat == nil {
 					return fmt.Errorf("must specify input format with standard input")
 				}
+				inputFormat = *params.optForcedInputFormat
+				optInFile = nil
 				reader = params.stdin
 			} else {
-				if inputFormat == tblcalc.InputFormatNone {
+				if params.optForcedInputFormat != nil {
+					inputFormat = *params.optForcedInputFormat
+				} else {
 					ext := strings.ToLower(path.Ext(inPath))
 					switch ext {
 					case ".csv":
@@ -73,36 +75,38 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 						return fmt.Errorf("unexpected file extension \"%s\"", ext)
 					}
 				}
-				inFile, err = os.Open(inPath)
+				optInFile, err = os.Open(inPath)
 				if err != nil {
 					return fmt.Errorf("failed to open input file: %s Error: %v", inPath, err)
 				}
-				defer (func() { _ = inFile.Close() })()
-				reader = inFile
+				defer (func() { Ignore(optInFile.Close()) })()
+				reader = optInFile
 			}
-			var outFile *os.File
+			var outputFormat tblcalc.OutputFormat
+			if params.optForcedOutputFormat != nil {
+				outputFormat = *params.optForcedOutputFormat
+			} else {
+				switch inputFormat {
+				case tblcalc.InputFormatCSV:
+					outputFormat = tblcalc.OutputFormatCSV
+				case tblcalc.InputFormatTSV:
+					outputFormat = tblcalc.OutputFormatTSV
+				}
+			}
+			var optOutFile *os.File
 			var writer io.Writer
 			if params.inPlace {
-				if outputFormat == tblcalc.OutputFormatNone {
-					switch inputFormat {
-					case tblcalc.InputFormatCSV:
-						outputFormat = tblcalc.OutputFormatCSV
-					case tblcalc.InputFormatTSV:
-						outputFormat = tblcalc.OutputFormatTSV
-					case tblcalc.InputFormatNone:
-						panic("058e65e")
-					}
-				}
-				outFile, err = os.CreateTemp("", appID)
+				optOutFile, err = os.CreateTemp("", appID)
 				if err != nil {
 					return fmt.Errorf("failed to create temporary output file: %v", err)
 				}
 				defer func() {
-					_ = outFile.Close()
-					_ = os.Remove(outFile.Name())
+					Ignore(optOutFile.Close())
+					Must(os.Remove(optOutFile.Name()))
 				}()
-				writer = outFile
+				writer = optOutFile
 			} else {
+				optOutFile = nil
 				writer = params.stdout
 			}
 			bufOut := bufio.NewWriter(writer)
@@ -120,15 +124,12 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 				return fmt.Errorf("failed to flush output: %v", err)
 			}
 			if params.inPlace {
-				err = outFile.Close()
-				if err != nil {
-					return fmt.Errorf("failed to close output file: %s Error: %v", outFile.Name(), err)
-				}
+				Must(optOutFile.Close())
 				// Compare the original file with the output file
 				var outContent []byte
-				outContent, err = os.ReadFile(outFile.Name())
+				outContent, err = os.ReadFile(optOutFile.Name())
 				if err != nil {
-					return fmt.Errorf("failed to read output file: %s", outFile.Name())
+					return fmt.Errorf("failed to read output file: %s", optOutFile.Name())
 				}
 				source := Value(os.ReadFile(inPath))
 				if bytes.Equal(source, outContent) {
@@ -140,11 +141,8 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 				if err != nil {
 					return fmt.Errorf("failed to open original file for writing: %s Error: %v", inPath, err)
 				}
-				defer (func() { _ = origFile.Close() })()
-				_, err = origFile.Write(outContent)
-				if err != nil {
-					return fmt.Errorf("failed to write to original file: %s Error: %v", inPath, err)
-				}
+				defer Must(origFile.Close())
+				Must(origFile.Write(outContent))
 			}
 			return nil
 		}()
@@ -157,12 +155,12 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 
 func main() {
 	params := tblcalcParams{
-		exeName:            appID,
-		stdin:              os.Stdin,
-		stdout:             os.Stdout,
-		stderr:             os.Stderr,
-		forcedInputFormat:  tblcalc.InputFormatNone,
-		forcedOutputFormat: tblcalc.OutputFormatNone,
+		exeName:               appID,
+		stdin:                 os.Stdin,
+		stdout:                os.Stdout,
+		stderr:                os.Stderr,
+		optForcedInputFormat:  nil,
+		optForcedOutputFormat: nil,
 	}
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		params.stdin = bufio.NewReader(os.Stdin)
@@ -203,16 +201,19 @@ func main() {
 		return
 	}
 	if inputCSVForced {
-		params.forcedInputFormat = tblcalc.InputFormatCSV
+		params.optForcedInputFormat = Ptr(tblcalc.InputFormatCSV)
 	}
 	if inputTSVForced {
-		params.forcedInputFormat = tblcalc.InputFormatTSV
+		params.optForcedInputFormat = Ptr(tblcalc.InputFormatTSV)
 	}
 	if outputCSVForced {
-		params.forcedOutputFormat = tblcalc.OutputFormatCSV
+		params.optForcedOutputFormat = Ptr(tblcalc.OutputFormatCSV)
 	}
 	if outputTSVForced {
-		params.forcedOutputFormat = tblcalc.OutputFormatTSV
+		params.optForcedOutputFormat = Ptr(tblcalc.OutputFormatTSV)
+	}
+	if len(params.args) == 0 {
+		params.args = append(params.args, stdinFileName)
 	}
 	err := tblcalcEntry(&params)
 	if err != nil {
