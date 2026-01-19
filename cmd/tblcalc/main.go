@@ -14,7 +14,9 @@ import (
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
 
+	//lint:ignore ST1001
 	//revive:disable-next-line:dot-imports
+	//nolint:staticcheck
 	. "github.com/knaka/go-utils"
 )
 
