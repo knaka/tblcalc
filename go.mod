@@ -1,13 +1,13 @@
 module github.com/knaka/tblcalc
 
-go 1.24
+go 1.24.0
 
 toolchain go1.24.2
 
 require (
 	github.com/spf13/pflag v1.0.10
 	github.com/yuin/gopher-lua v1.1.1
-	golang.org/x/term v0.24.0
+	golang.org/x/term v0.39.0
 )
 
 require (
@@ -17,5 +17,5 @@ require (
 
 require (
 	github.com/knaka/go-utils v0.1.12
-	golang.org/x/sys v0.25.0 // indirect
+	golang.org/x/sys v0.40.0 // indirect
 )
