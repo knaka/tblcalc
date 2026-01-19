@@ -19,9 +19,26 @@ subcmd_run() {
   "$a_out" "$@"
 }
 
+# Releases · golangci/golangci-lint https://github.com/golangci/golangci-lint/releases
+golangci_lint_version_a6d4fc4="2.8.0"
+
+golangci_lint() {
+  # shellcheck disable=SC2016
+  run_fetched_cmd \
+    --name="golangci-lint" \
+    --ver="$golangci_lint_version_a6d4fc4" \
+    --os-map="$goos_map" \
+    --arch-map="$goarch_map" \
+    --ext-map="$archive_ext_map" \
+    --url-template='https://github.com/golangci/golangci-lint/releases/download/v${ver}/golangci-lint-${ver}-${os}-${arch}${ext}' \
+    --rel-dir-template='golangci-lint-${ver}-${os}-${arch}' \
+    -- \
+    "$@"
+}
+
 # Run lint
 subcmd_lint() {
-  "$HOME"/go/bin/golangci-lint-v2 run "$@"
+  golangci_lint run "$@"
 }
 
 # Update documentation files.
