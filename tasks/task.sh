@@ -1493,7 +1493,7 @@ subcmd_task__install() {
     printf "Downloading \"$name\" ... " >&2
     if test "$name" = "task.sh"
     then
-      "$VERBOSE" && Lazily replacing $file.new to $file.
+      "$VERBOSE" && Lazily replacing "$file.new" to "$file".
       chaintrap "mv \"$file.new\" \"$file\"" EXIT
       local file="$file.new"
     fi
