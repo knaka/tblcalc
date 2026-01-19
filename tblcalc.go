@@ -85,7 +85,7 @@ func Execute(
 	return processWithTBLFMLib(reader, inputFormat, writer, outputFormat, formulas)
 }
 
-func getCSVRecords(
+func csvRecordsSeq(
 	reader io.Reader,
 	onComment func(lineNum int, comment string),
 ) iter.Seq[[]string] {
@@ -123,7 +123,7 @@ func getCSVRecords(
 	}
 }
 
-func getTSVRecords(
+func tsvRecordsSeq(
 	reader io.Reader,
 	onComment func(lineNum int, comment string),
 ) iter.Seq[[]string] {
@@ -159,16 +159,16 @@ func processWithTBLFMLib(
 	onComment := func(lineNum int, line string) {
 		commentLines[lineNum] = line
 	}
-	records := (func() iter.Seq[[]string] {
+	recordsSeq := (func() iter.Seq[[]string] {
 		switch inputFormat {
 		case InputFormatCSV:
-			return getCSVRecords(reader, onComment)
+			return csvRecordsSeq(reader, onComment)
 		case InputFormatTSV:
-			return getTSVRecords(reader, onComment)
+			return tsvRecordsSeq(reader, onComment)
 		}
 		return nil
 	})()
-	for record := range records {
+	for record := range recordsSeq {
 		table = append(table, record)
 	}
 	// Apply formulas
