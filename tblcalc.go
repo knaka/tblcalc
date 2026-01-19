@@ -6,11 +6,17 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"iter"
 	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/knaka/tblcalc/tblfm"
+
+	//lint:ignore ST1001
+	//nolint:staticcheck
+	//revive:disable-next-line:dot-imports
+	. "github.com/knaka/go-utils"
 )
 
 // InputFormat represents the format of input data.
@@ -79,6 +85,66 @@ func Execute(
 	return processWithTBLFMLib(reader, inputFormat, writer, outputFormat, formulas)
 }
 
+func csvRecords(
+	reader io.Reader,
+	onComment func(lineNum int, comment string),
+) iter.Seq[[]string] {
+	pipeReader, pipeWriter := io.Pipe()
+	go (func() {
+		defer (func() { Must(pipeWriter.Close()) })()
+		scanner := bufio.NewScanner(reader)
+		lineNum := 0
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "#") {
+				onComment(lineNum, line)
+			} else {
+				if _, err := fmt.Fprintln(pipeWriter, line); err != nil {
+					return
+				}
+			}
+			lineNum++
+		}
+		if err := scanner.Err(); err != nil {
+			pipeWriter.CloseWithError(err)
+		}
+	})()
+	csvReader := csv.NewReader(pipeReader)
+	return func(yield func([]string) bool) {
+		for {
+			record, err := csvReader.Read()
+			if err != nil {
+				break
+			}
+			if !yield(record) {
+				break
+			}
+		}
+	}
+}
+
+func tsvRecords(
+	reader io.Reader,
+	onComment func(lineNum int, comment string),
+) iter.Seq[[]string] {
+	return func(yield func([]string) bool) {
+		scanner := bufio.NewScanner(reader)
+		lineNum := 0
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "#") {
+				onComment(lineNum, line)
+			} else {
+				record := strings.Split(line, "\t")
+				if !yield(record) {
+					break
+				}
+			}
+			lineNum++
+		}
+	}
+}
+
 func processWithTBLFMLib(
 	reader io.Reader,
 	inputFormat InputFormat,
@@ -90,33 +156,18 @@ func processWithTBLFMLib(
 ) {
 	var table [][]string
 	commentLines := make(map[int]string)
-	// Read input line by line, preserving comments
-	scanner := bufio.NewScanner(reader)
-	lineNum := 0
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "#") {
-			commentLines[lineNum] = line
-			lineNum++
-			continue
-		}
-		var record []string
-		// Parse CSV or TSV line
-		switch inputFormat {
-		case InputFormatCSV:
-			csvReader := csv.NewReader(strings.NewReader(line))
-			record, err = csvReader.Read()
-			if err != nil {
-				return fmt.Errorf("failed to parse CSV line %d: %v", lineNum, err)
-			}
-		case InputFormatTSV:
-			record = strings.Split(line, "\t")
-		}
-		table = append(table, record)
-		lineNum++
+	onComment := func(lineNum int, line string) {
+		commentLines[lineNum] = line
 	}
-	if err = scanner.Err(); err != nil {
-		return err
+	var records iter.Seq[[]string]
+	switch inputFormat {
+	case InputFormatCSV:
+		records = csvRecords(reader, onComment)
+	case InputFormatTSV:
+		records = tsvRecords(reader, onComment)
+	}
+	for record := range records {
+		table = append(table, record)
 	}
 	// Apply formulas
 	if table, err = tblfm.Apply(table, formulas, tblfm.WithHeader(true)); err != nil {
@@ -125,16 +176,17 @@ func processWithTBLFMLib(
 	// Write output with comments preserved
 	switch outputFormat {
 	case OutputFormatCSV:
-		return writeCSV(writer, table, commentLines, lineNum)
+		return writeCSV(writer, table, commentLines)
 	case OutputFormatTSV:
-		return writeTSV(writer, table, commentLines, lineNum)
+		return writeTSV(writer, table, commentLines)
 	}
 	return
 }
 
-func writeCSV(writer io.Writer, table [][]string, commentLines map[int]string, lineNum int) error {
+func writeCSV(writer io.Writer, table [][]string, commentLines map[int]string) error {
 	csvWriter := csv.NewWriter(writer)
 	defer csvWriter.Flush()
+	lineNum := len(table) + len(commentLines)
 	tableLineNum := 0
 	for i := range lineNum {
 		if comment, isComment := commentLines[i]; isComment {
@@ -160,7 +212,8 @@ func writeCSV(writer io.Writer, table [][]string, commentLines map[int]string, l
 	return csvWriter.Error()
 }
 
-func writeTSV(writer io.Writer, table [][]string, commentLines map[int]string, lineNum int) error {
+func writeTSV(writer io.Writer, table [][]string, commentLines map[int]string) error {
+	lineNum := len(table) + len(commentLines)
 	tableLineNum := 0
 	for i := range lineNum {
 		if comment, isComment := commentLines[i]; isComment {
