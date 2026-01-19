@@ -160,22 +160,11 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 
 func main() {
 	params := tblcalcParams{
-		exeName:               appID,
-		stdin:                 os.Stdin,
-		stdout:                os.Stdout,
-		stderr:                os.Stderr,
-		optForcedInputFormat:  nil,
-		optForcedOutputFormat: nil,
-	}
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		params.stdin = bufio.NewReader(os.Stdin)
-	}
-	if term.IsTerminal(int(os.Stdout.Fd())) {
-		params.isTerm = true
-	} else {
-		bufStdout := bufio.NewWriter(os.Stdout)
-		defer (func() { _ = bufStdout.Flush() })()
-		params.stdout = bufStdout
+		exeName: appID,
+		stdin:   os.Stdin,
+		stdout:  os.Stdout,
+		stderr:  os.Stderr,
+		isTerm:  term.IsTerminal(int(os.Stdout.Fd())),
 	}
 	var shouldPrintHelp bool
 	pflag.BoolVarP(&shouldPrintHelp, "help", "h", false, "show help")

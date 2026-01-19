@@ -36,6 +36,11 @@ golangci_lint() {
     "$@"
 }
 
+# Run golangci-lint(1)
+subcmd_golangci_lint() {
+  golangci_lint "$@"
+}
+
 # Run lint
 subcmd_lint() {
   golangci_lint run "$@"
