@@ -16,7 +16,7 @@ jobs:
         with:
           fetch-depth: 0
       # actions/setup-go: Set up your GitHub Actions workflow with a specific version of Go https://github.com/actions/setup-go
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
