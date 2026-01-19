@@ -45,8 +45,11 @@ const stdinFileName = "-"
 func tblcalcEntry(params *tblcalcParams) (err error) {
 	if params.verbose {
 		for i, arg := range params.args {
-			log.Println(i, arg)
+			Must(fmt.Fprintln(params.stderr, "b5747de", i, arg))
 		}
+	}
+	if len(params.args) == 0 {
+		params.args = append(params.args, stdinFileName)
 	}
 	for _, inPath := range params.args {
 		err = func() error {
@@ -213,9 +216,6 @@ func main() {
 	}
 	if outputTSVForced {
 		params.optForcedOutputFormat = Ptr(tblcalc.OutputFormatTSV)
-	}
-	if len(params.args) == 0 {
-		params.args = append(params.args, stdinFileName)
 	}
 	err := tblcalcEntry(&params)
 	if err != nil {
