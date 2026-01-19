@@ -19,6 +19,11 @@ subcmd_run() {
   "$a_out" "$@"
 }
 
+# Run lint
+subcmd_lint() {
+  "$HOME"/go/bin/golangci-lint-v2 run "$@"
+}
+
 # Update documentation files.
 task_doc() {
   mdpp --in-place --allow-remote \
