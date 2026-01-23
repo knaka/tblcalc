@@ -53,7 +53,7 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 	}
 	for _, inPath := range params.args {
 		err = func() error {
-			var inputFormat tblcalc.InputFormat
+			var inputFormat *tblcalc.InputFormat
 			var reader io.Reader
 			if inPath == stdinFileName {
 				if params.inPlace {
@@ -62,18 +62,18 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 				if params.optForcedInputFormat == nil {
 					return fmt.Errorf("must specify input format with standard input")
 				}
-				inputFormat = *params.optForcedInputFormat
+				inputFormat = params.optForcedInputFormat
 				reader = params.stdin
 			} else {
 				if params.optForcedInputFormat != nil {
-					inputFormat = *params.optForcedInputFormat
+					inputFormat = params.optForcedInputFormat
 				} else {
 					ext := strings.ToLower(path.Ext(inPath))
 					switch ext {
 					case ".csv":
-						inputFormat = tblcalc.InputFormatCSV
+						inputFormat = Ptr(tblcalc.InputFormatCSV)
 					case ".tsv":
-						inputFormat = tblcalc.InputFormatTSV
+						inputFormat = Ptr(tblcalc.InputFormatTSV)
 					default:
 						return fmt.Errorf("unexpected file extension \"%s\"", ext)
 					}
@@ -85,11 +85,12 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 				defer (func() { Ignore(inFile.Close()) })()
 				reader = inFile
 			}
+			Some(inputFormat, reader)
 			var outputFormat tblcalc.OutputFormat
 			if params.optForcedOutputFormat != nil {
 				outputFormat = *params.optForcedOutputFormat
 			} else {
-				switch inputFormat {
+				switch *inputFormat {
 				case tblcalc.InputFormatCSV:
 					outputFormat = tblcalc.OutputFormatCSV
 				case tblcalc.InputFormatTSV:
@@ -115,7 +116,7 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 			bufOut := bufio.NewWriter(writer)
 			err = tblcalc.Execute(
 				reader,
-				inputFormat,
+				*inputFormat,
 				bufOut,
 				outputFormat,
 			)
@@ -173,7 +174,7 @@ func main() {
 	pflag.BoolVarP(&params.verbose, "verbose", "v", false, "verbosity")
 	pflag.BoolVarP(&params.colored, "colored", "c", params.isTerm, "colored")
 
-	pflag.BoolVarP(&params.inPlace, "in-place", "i", false, "Edit file(s) in-place")
+	pflag.BoolVarP(&params.inPlace, "in-place", "i", false, "edit file(s) in place")
 
 	var inputCSVForced bool
 	pflag.BoolVarP(&inputCSVForced, "icsv", "", false, "Force CSV for input format")
