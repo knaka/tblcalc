@@ -52,7 +52,7 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 		params.args = append(params.args, stdinFileName)
 	}
 	for _, inPath := range params.args {
-		err = func() error {
+		err = func() (err error) {
 			var inputFormat *tblcalc.InputFormat
 			var reader io.Reader
 			if inPath == stdinFileName {
@@ -132,24 +132,23 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 			if params.inPlace {
 				Must(optOutFile.Close())
 				// Compare the original file with the output file
-				var outContent []byte
-				outContent, err = os.ReadFile(optOutFile.Name())
+				outContent, err := os.ReadFile(optOutFile.Name())
 				if err != nil {
 					return fmt.Errorf("failed to read output file: %s", optOutFile.Name())
 				}
 				source := Value(os.ReadFile(inPath))
 				if bytes.Equal(source, outContent) {
-					return nil
+					return err
 				}
 				// Replace the original file content while preserving hard links
-				origFile, err2 := os.OpenFile(inPath, os.O_WRONLY|os.O_TRUNC, 0)
-				if err2 != nil {
-					return fmt.Errorf("failed to open original file for writing: %s Error: %v", inPath, err2)
+				origFile, err := os.OpenFile(inPath, os.O_WRONLY|os.O_TRUNC, 0)
+				if err != nil {
+					return fmt.Errorf("failed to open original file for writing: %s Error: %v", inPath, err)
 				}
 				defer Must(origFile.Close())
 				Must(origFile.Write(outContent))
 			}
-			return nil
+			return
 		}()
 		if err != nil {
 			break
