@@ -54,7 +54,6 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 	for _, inPath := range params.args {
 		err = func() error {
 			var inputFormat tblcalc.InputFormat
-			var optInFile *os.File
 			var reader io.Reader
 			if inPath == stdinFileName {
 				if params.inPlace {
@@ -64,7 +63,6 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 					return fmt.Errorf("must specify input format with standard input")
 				}
 				inputFormat = *params.optForcedInputFormat
-				optInFile = nil
 				reader = params.stdin
 			} else {
 				if params.optForcedInputFormat != nil {
@@ -80,12 +78,12 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 						return fmt.Errorf("unexpected file extension \"%s\"", ext)
 					}
 				}
-				optInFile, err = os.Open(inPath)
-				if err != nil {
-					return fmt.Errorf("failed to open input file: %s Error: %v", inPath, err)
+				inFile, err2 := os.Open(inPath)
+				if err2 != nil {
+					return fmt.Errorf("failed to open input file: %s Error: %v", inPath, err2)
 				}
-				defer (func() { Ignore(optInFile.Close()) })()
-				reader = optInFile
+				defer (func() { Ignore(inFile.Close()) })()
+				reader = inFile
 			}
 			var outputFormat tblcalc.OutputFormat
 			if params.optForcedOutputFormat != nil {
@@ -141,10 +139,9 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 					return nil
 				}
 				// Replace the original file content while preserving hard links
-				var origFile *os.File
-				origFile, err = os.OpenFile(inPath, os.O_WRONLY|os.O_TRUNC, 0)
-				if err != nil {
-					return fmt.Errorf("failed to open original file for writing: %s Error: %v", inPath, err)
+				origFile, err2 := os.OpenFile(inPath, os.O_WRONLY|os.O_TRUNC, 0)
+				if err2 != nil {
+					return fmt.Errorf("failed to open original file for writing: %s Error: %v", inPath, err2)
 				}
 				defer Must(origFile.Close())
 				Must(origFile.Write(outContent))
