@@ -86,17 +86,18 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 				reader = inFile
 			}
 			Some(inputFormat, reader)
-			var outputFormat tblcalc.OutputFormat
+			var outputFormat *tblcalc.OutputFormat
 			if params.optForcedOutputFormat != nil {
-				outputFormat = *params.optForcedOutputFormat
+				outputFormat = params.optForcedOutputFormat
 			} else {
 				switch *inputFormat {
 				case tblcalc.InputFormatCSV:
-					outputFormat = tblcalc.OutputFormatCSV
+					outputFormat = Ptr(tblcalc.OutputFormatCSV)
 				case tblcalc.InputFormatTSV:
-					outputFormat = tblcalc.OutputFormatTSV
+					outputFormat = Ptr(tblcalc.OutputFormatTSV)
 				}
 			}
+			Some(outputFormat)
 			var optOutFile *os.File
 			var writer io.Writer
 			if params.inPlace {
@@ -113,12 +114,13 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 				optOutFile = nil
 				writer = params.stdout
 			}
+			Some(writer)
 			bufOut := bufio.NewWriter(writer)
 			err = tblcalc.Execute(
 				reader,
 				*inputFormat,
 				bufOut,
-				outputFormat,
+				*outputFormat,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to preprocess: %v", err)
@@ -153,7 +155,7 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 			break
 		}
 	}
-	return err
+	return
 }
 
 func main() {
