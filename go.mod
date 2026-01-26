@@ -16,6 +16,6 @@ require (
 )
 
 require (
-	github.com/knaka/go-utils v0.1.12
+	github.com/knaka/go-utils v0.1.13
 	golang.org/x/sys v0.40.0 // indirect
 )

@@ -2,8 +2,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/friendsofgo/errors v0.9.2 h1:X6NYxef4efCBdwI7BgS820zFaN7Cphrmb+Pljdzjtgk=
 github.com/friendsofgo/errors v0.9.2/go.mod h1:yCvFW5AkDIL9qn7suHVLiI/gH228n7PC4Pn44IGoTOI=
-github.com/knaka/go-utils v0.1.12 h1:azJ532NEhTD8iqlu7rrRGxVAdKhU7A3fti9FBnTQvac=
-github.com/knaka/go-utils v0.1.12/go.mod h1:h/mSJpi4QHHvorx6tz6/PlT9BLw7iJuxouLrd4iLYOE=
+github.com/knaka/go-utils v0.1.13 h1:73b3qvjkeiy1epNzrRUyv8TKa6AR/O5gwc6vkWUgP2M=
+github.com/knaka/go-utils v0.1.13/go.mod h1:h/mSJpi4QHHvorx6tz6/PlT9BLw7iJuxouLrd4iLYOE=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/spf13/pflag v1.0.10 h1:4EBh2KAYBwaONj6b2Ye1GiHfwjqyROoF4RwYO+vPwFk=
