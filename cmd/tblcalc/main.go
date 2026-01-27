@@ -53,7 +53,7 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 	}
 	for _, inPath := range params.args {
 		err = func() (err error) {
-			var inputFormat *tblcalc.InputFormat
+			var inputFormat tblcalc.InputFormat
 			var reader io.Reader
 			if inPath == stdinFileName {
 				if params.inPlace {
@@ -62,18 +62,18 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 				if params.optForcedInputFormat == nil {
 					return fmt.Errorf("must specify input format with standard input")
 				}
-				inputFormat = params.optForcedInputFormat
+				inputFormat = *params.optForcedInputFormat
 				reader = params.stdin
 			} else {
 				if params.optForcedInputFormat != nil {
-					inputFormat = params.optForcedInputFormat
+					inputFormat = *params.optForcedInputFormat
 				} else {
 					ext := strings.ToLower(path.Ext(inPath))
 					switch ext {
 					case ".csv":
-						inputFormat = Ptr(tblcalc.InputFormatCSV)
+						inputFormat = tblcalc.InputFormatCSV
 					case ".tsv":
-						inputFormat = Ptr(tblcalc.InputFormatTSV)
+						inputFormat = tblcalc.InputFormatTSV
 					default:
 						return fmt.Errorf("unexpected file extension \"%s\"", ext)
 					}
@@ -85,19 +85,17 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 				defer (func() { Ignore(inFile.Close()) })()
 				reader = inFile
 			}
-			Some(inputFormat, reader)
-			var outputFormat *tblcalc.OutputFormat
+			var outputFormat tblcalc.OutputFormat
 			if params.optForcedOutputFormat != nil {
-				outputFormat = params.optForcedOutputFormat
+				outputFormat = *params.optForcedOutputFormat
 			} else {
-				switch *inputFormat {
+				switch inputFormat {
 				case tblcalc.InputFormatCSV:
-					outputFormat = Ptr(tblcalc.OutputFormatCSV)
+					outputFormat = tblcalc.OutputFormatCSV
 				case tblcalc.InputFormatTSV:
-					outputFormat = Ptr(tblcalc.OutputFormatTSV)
+					outputFormat = tblcalc.OutputFormatTSV
 				}
 			}
-			Some(outputFormat)
 			var optOutFile *os.File
 			var writer io.Writer
 			if params.inPlace {
@@ -114,13 +112,12 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 				optOutFile = nil
 				writer = params.stdout
 			}
-			Some(writer)
 			bufOut := bufio.NewWriter(writer)
 			err = tblcalc.Execute(
 				reader,
-				*inputFormat,
+				inputFormat,
 				bufOut,
-				*outputFormat,
+				outputFormat,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to preprocess: %v", err)
