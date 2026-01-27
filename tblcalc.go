@@ -159,15 +159,13 @@ func processWithTBLFMLib(
 	onComment := func(lineNum int, line string) {
 		commentLines[lineNum] = line
 	}
-	recordsSeq := (func() iter.Seq[[]string] {
-		switch inputFormat {
-		case InputFormatCSV:
-			return csvRecordsSeq(reader, onComment)
-		case InputFormatTSV:
-			return tsvRecordsSeq(reader, onComment)
-		}
-		return nil
-	})()
+	var recordsSeq iter.Seq[[]string]
+	switch inputFormat {
+	case InputFormatCSV:
+		recordsSeq = csvRecordsSeq(reader, onComment)
+	case InputFormatTSV:
+		recordsSeq = tsvRecordsSeq(reader, onComment)
+	}
 	for record := range recordsSeq {
 		table = append(table, record)
 	}
