@@ -119,28 +119,32 @@ Input file (prices.csv):
 ```csv
 # Price calculation
 #
-#+TBLFM: ${Total} = ${Unit Price} * ${Qty}
-#+TBLFM: ${Tax}=${Total}*0.1
-#+TBLFM: ${Grand Total} = ${Total} + ${Tax}
+#+TBLFM: @2${Total}..@>> = ${Unit Price} * ${Qty}
+#+TBLFM: @2${Tax}..@>>=${Total}*0.1
+#+TBLFM: @2${Grand Total}..@>> = ${Total} + ${Tax}
+#+TBLFM: @>${Grand Total}=vsum(@2..@>>)
 #
 Product,Unit Price,Qty,Total,Tax,Grand Total
 Apple,100,5,,,
 Orange,150,3,,,
 Banana,80,10,,,
+TOTAL,,,,,
 ```
 
 After processing with `tblcalc prices.csv`:
 ```csv
 # Price calculation
 #
-#+TBLFM: ${Total} = ${Unit Price} * ${Qty}
-#+TBLFM: ${Tax}=${Total}*0.1
-#+TBLFM: ${Grand Total} = ${Total} + ${Tax}
+#+TBLFM: @2${Total}..@>> = ${Unit Price} * ${Qty}
+#+TBLFM: @2${Tax}..@>>=${Total}*0.1
+#+TBLFM: @2${Grand Total}..@>> = ${Total} + ${Tax}
+#+TBLFM: @>${Grand Total}=vsum(@2..@>>)
 #
 Product,Unit Price,Qty,Total,Tax,Grand Total
 Apple,100,5,500,50,550
 Orange,150,3,450,45,495
 Banana,80,10,800,80,880
+TOTAL,,,,,1925
 ```
 
 Header name references can also be used in range expressions: `vsum(${Q1}..${Q4})`
