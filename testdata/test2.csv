@@ -1,0 +1,10 @@
+# Test for header name column references
+#
+#+TBLFM: ${Total} = ${Unit Price} * ${Qty}
+#+TBLFM: ${Tax}=${Total}*0.1
+#+TBLFM: ${Grand Total} = ${Total} + ${Tax}
+#
+Product,Unit Price,Qty,Total,Tax,Grand Total
+Apple,100,5,,,
+Orange,150,3,,,
+Banana,80,10,,,

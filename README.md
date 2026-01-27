@@ -100,6 +100,7 @@ This ensures that comment lines (including `+TBLFM` directives) are properly dis
 
 The `+TBLFM` directive uses Org-mode-style cell references:
 - `$2`, `$3`, `$4` - Column references (1-indexed)
+- `${Header Name}` - Column reference by header name (supports spaces)
 - `@2` - Row 2 (first data row after header)
 - `$>` - Last column
 - `@>` - Last row
@@ -107,6 +108,42 @@ The `+TBLFM` directive uses Org-mode-style cell references:
 - `@<` - First row (including header)
 - `@2$3` - Cell at row 2, column 3
 - Ranges: `@<<$>..@>>$>` (range notation using `..`)
+
+### Header Name References
+
+Instead of numeric column indices, you can reference columns by their header names using `${Header Name}` syntax. This makes formulas more readable and resilient to column reordering.
+
+Note: Org-mode's "named field" syntax (e.g., `$name`) is not supported. Instead, tblcalc uses the `${Header Name}` syntax to directly reference columns by their header values.
+
+Input file (prices.csv):
+```csv
+# Price calculation
+#
+#+TBLFM: ${Total} = ${Unit Price} * ${Qty}
+#+TBLFM: ${Tax}=${Total}*0.1
+#+TBLFM: ${Grand Total} = ${Total} + ${Tax}
+#
+Product,Unit Price,Qty,Total,Tax,Grand Total
+Apple,100,5,,,
+Orange,150,3,,,
+Banana,80,10,,,
+```
+
+After processing with `tblcalc prices.csv`:
+```csv
+# Price calculation
+#
+#+TBLFM: ${Total} = ${Unit Price} * ${Qty}
+#+TBLFM: ${Tax}=${Total}*0.1
+#+TBLFM: ${Grand Total} = ${Total} + ${Tax}
+#
+Product,Unit Price,Qty,Total,Tax,Grand Total
+Apple,100,5,500,50,550
+Orange,150,3,450,45,495
+Banana,80,10,800,80,880
+```
+
+Header name references can also be used in range expressions: `vsum(${Q1}..${Q4})`
 
 ### Lua-Based Formulas
 

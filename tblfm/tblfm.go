@@ -34,16 +34,17 @@ const (
 	// - Absolute position: 1, 2, 3, ...
 	// - Relative position: -1, +2, ...
 	// - Special markers: <, <<, <<<, >, >>, >>>
-	specValPat = `[-+]?\d+|<{1,3}|>{1,3}`
+	// - Header name reference: {header name} (for columns only, when hasHeader is true)
+	specValPat = `[-+]?\d+|<{1,3}|>{1,3}|\{[^}]+\}`
 
 	// rowSpecPat matches a row specification like @2, @-1, @<, @>>
 	rowSpecPat = `@(` + specValPat + `)`
 
-	// colSpecPat matches a column specification like $3, $-1, $<, $>>
+	// colSpecPat matches a column specification like $3, $-1, $<, $>>, ${header name}
 	colSpecPat = `\$(` + specValPat + `)`
 
 	// cellSpecPat matches a cell specification (optional row + optional column)
-	// Examples: @2$3, $4, @3, @<$>
+	// Examples: @2$3, $4, @3, @<$>, ${Price}
 	cellSpecPat = `(?:@(?:` + specValPat + `))?(?:\$(?:` + specValPat + `))?`
 )
 
@@ -104,10 +105,62 @@ var getRegexps = sync.OnceValue(func() *regexps {
 	}
 })
 
-// parseCellPosition parses a cell position specification like "@2$3", "$4", "@3"
-// Returns (row, col) where -1 means "any" (not specified)
+// resolveColSpec resolves a column specification to a 0-based column index.
+// colSpec can be: numeric (1-based), relative (-1), special (<, >, etc.), or header name ({name}).
+// Returns (-1, nil) if not specified, or (index, nil) on success, or (-1, error) on failure.
+func resolveColSpec(colSpec string, rowLen int, currentCol int, headerColMap map[string]int) (int, error) {
+	if colSpec == "" {
+		return -1, nil
+	}
+
+	switch colSpec {
+	case "<":
+		return 0, nil
+	case "<<":
+		return 1, nil
+	case "<<<":
+		return 2, nil
+	case ">":
+		return rowLen - 1, nil
+	case ">>":
+		return rowLen - 2, nil
+	case ">>>":
+		return rowLen - 3, nil
+	default:
+		// Check for header name reference: {header name}
+		if strings.HasPrefix(colSpec, "{") && strings.HasSuffix(colSpec, "}") {
+			headerName := colSpec[1 : len(colSpec)-1]
+			if colIdx, ok := headerColMap[headerName]; ok {
+				return colIdx, nil
+			}
+			return -1, fmt.Errorf("header column %q not found (hasHeader may be false or header name is incorrect)", headerName)
+		}
+
+		// Numeric column reference
+		colNum, _ := strconv.Atoi(colSpec)
+		if colNum > 0 {
+			colIdx := colNum - 1 // 1-based to 0-based
+			if rowLen > 0 && colIdx >= rowLen {
+				return -1, fmt.Errorf("column index $%d is out of range (max columns: %d)", colNum, rowLen)
+			}
+			return colIdx, nil
+		} else if colNum < 0 && currentCol > 0 {
+			// Relative reference: $-1 means one column to the left
+			colIdx := currentCol - 1 + colNum
+			if colIdx < 0 {
+				return -1, fmt.Errorf("relative column reference $%d results in negative index", colNum)
+			}
+			return colIdx, nil
+		}
+	}
+	return -1, nil
+}
+
+// parseCellPosition parses a cell position specification like "@2$3", "$4", "@3", "${Price}"
+// Returns (row, col, err) where -1 means "any" (not specified)
 // currentRow and currentCol are 1-based positions used for relative references
-func parseCellPosition(pos string, tableLen int, rowLen int, currentRow int, currentCol int) (row int, col int) {
+// headerColMap maps header names to 0-based column indices (for ${header name} syntax)
+func parseCellPosition(pos string, tableLen int, rowLen int, currentRow int, currentCol int, headerColMap map[string]int) (row int, col int, err error) {
 	row = -1
 	col = -1
 
@@ -150,31 +203,8 @@ func parseCellPosition(pos string, tableLen int, rowLen int, currentRow int, cur
 		}
 	}
 
-	// Parse column
-	if colSpec != "" {
-		switch colSpec {
-		case "<":
-			col = 0
-		case "<<":
-			col = 1
-		case "<<<":
-			col = 2
-		case ">":
-			col = rowLen - 1
-		case ">>":
-			col = rowLen - 2
-		case ">>>":
-			col = rowLen - 3
-		default:
-			colNum, _ := strconv.Atoi(colSpec)
-			if colNum > 0 {
-				col = colNum - 1 // 1-based to 0-based
-			} else if colNum < 0 && currentCol > 0 {
-				// Relative reference: $-1 means one column to the left
-				col = currentCol - 1 + colNum
-			}
-		}
-	}
+	// Parse column using shared resolver
+	col, err = resolveColSpec(colSpec, rowLen, currentCol, headerColMap)
 
 	return
 }
@@ -206,6 +236,14 @@ func Apply(
 	dataStartRow := 0
 	if cfg.hasHeader {
 		dataStartRow = 1
+	}
+
+	// Build header column map for ${header name} references
+	headerColMap := make(map[string]int)
+	if cfg.hasHeader && len(table) > 0 {
+		for colIdx, headerName := range table[0] {
+			headerColMap[headerName] = colIdx
+		}
 	}
 
 	// Create Lua state
@@ -243,12 +281,18 @@ func Apply(
 		}
 
 		// Parse start position (no current position for target specification)
-		targetStartRow, targetStartCol := parseCellPosition(startPosSpec, len(table), maxRowLen, 0, 0)
+		targetStartRow, targetStartCol, err := parseCellPosition(startPosSpec, len(table), maxRowLen, 0, 0, headerColMap)
+		if err != nil {
+			return resultTable, fmt.Errorf("invalid target position %q: %w", startPosSpec, err)
+		}
 
 		// Parse end position (if range specified)
 		var targetEndRow, targetEndCol = -1, -1
 		if endPosSpec != "" {
-			targetEndRow, targetEndCol = parseCellPosition(endPosSpec, len(table), maxRowLen, 0, 0)
+			targetEndRow, targetEndCol, err = parseCellPosition(endPosSpec, len(table), maxRowLen, 0, 0, headerColMap)
+			if err != nil {
+				return resultTable, fmt.Errorf("invalid target end position %q: %w", endPosSpec, err)
+			}
 		}
 
 		// Determine target range
@@ -295,7 +339,7 @@ func Apply(
 				currentCol := colIdx + 1 // 1-based
 
 				// Evaluate the expression using Lua
-				resultStr, err := evaluateExpression(L, expression, table, currentRow, currentCol, dataStartRow)
+				resultStr, err := evaluateExpression(L, expression, table, currentRow, currentCol, dataStartRow, headerColMap)
 				if err != nil {
 					return resultTable, fmt.Errorf("error evaluating formula %s at @%d$%d: %w", formula, currentRow, currentCol, err)
 				}
@@ -310,13 +354,18 @@ func Apply(
 }
 
 // evaluateExpression evaluates a Lua expression with cell references replaced by actual values
-func evaluateExpression(L *lua.LState, expression string, table [][]string, currentRow int, currentCol int, dataStartRow int) (string, error) {
+func evaluateExpression(L *lua.LState, expression string, table [][]string, currentRow int, currentCol int, dataStartRow int, headerColMap map[string]int) (string, error) {
 	// Replace cell and row references with Lua code
 	evaluableExpr := expression
 
 	// First, replace range references with Lua table literals
 	re := getRegexps()
+	var replaceErr error
 	evaluableExpr = re.rangeRef.ReplaceAllStringFunc(evaluableExpr, func(rangeRef string) string {
+		if replaceErr != nil {
+			return rangeRef // Skip processing if error already occurred
+		}
+
 		matches := re.rangeRef.FindStringSubmatch(rangeRef)
 		if matches == nil {
 			return rangeRef
@@ -330,7 +379,11 @@ func evaluateExpression(L *lua.LState, expression string, table [][]string, curr
 		}
 
 		// Expand the range into a Lua table
-		values := expandRange(startPos, endPos, table, currentRow, currentCol, dataStartRow)
+		values, err := expandRange(startPos, endPos, table, currentRow, currentCol, dataStartRow, headerColMap)
+		if err != nil {
+			replaceErr = err
+			return rangeRef
+		}
 
 		// Convert to Lua table literal string
 		var parts []string
@@ -351,9 +404,16 @@ func evaluateExpression(L *lua.LState, expression string, table [][]string, curr
 
 		return "{" + strings.Join(parts, ",") + "}"
 	})
+	if replaceErr != nil {
+		return "", replaceErr
+	}
 
-	// Then, replace cell references (with optional row) like @2$3, $2
+	// Then, replace cell references (with optional row) like @2$3, $2, ${Price}
 	evaluableExpr = re.cellRef.ReplaceAllStringFunc(evaluableExpr, func(ref string) string {
+		if replaceErr != nil {
+			return ref // Skip processing if error already occurred
+		}
+
 		matches := re.cellRef.FindStringSubmatch(ref)
 		if matches == nil {
 			return ref
@@ -390,28 +450,15 @@ func evaluateExpression(L *lua.LState, expression string, table [][]string, curr
 			}
 		}
 
-		// Determine source column
-		var sourceCol int
-		switch colSpec {
-		case "<":
-			sourceCol = 0
-		case "<<":
-			sourceCol = 1
-		case "<<<":
-			sourceCol = 2
-		case ">":
-			sourceCol = len(table[sourceRow]) - 1
-		case ">>":
-			sourceCol = len(table[sourceRow]) - 2
-		case ">>>":
-			sourceCol = len(table[sourceRow]) - 3
-		default:
-			colNum, _ := strconv.Atoi(colSpec)
-			if colNum < 0 {
-				sourceCol = currentCol - 1 + colNum
-			} else {
-				sourceCol = colNum - 1
-			}
+		// Determine source column using shared resolver
+		rowLen := 0
+		if sourceRow >= 0 && sourceRow < len(table) {
+			rowLen = len(table[sourceRow])
+		}
+		sourceCol, err := resolveColSpec(colSpec, rowLen, currentCol, headerColMap)
+		if err != nil {
+			replaceErr = err
+			return ref
 		}
 
 		// Get the cell value
@@ -429,6 +476,9 @@ func evaluateExpression(L *lua.LState, expression string, table [][]string, curr
 		}
 		return "0"
 	})
+	if replaceErr != nil {
+		return "", replaceErr
+	}
 
 	// Then, replace standalone row references like @<, @<<, @> (for row copy operations)
 	evaluableExpr = re.rowRef.ReplaceAllStringFunc(evaluableExpr, func(ref string) string {
@@ -508,7 +558,7 @@ func evaluateExpression(L *lua.LState, expression string, table [][]string, curr
 }
 
 // expandRange expands a range reference like "@<..@>>" into an array of values
-func expandRange(startPos, endPos string, table [][]string, currentRow, currentCol, dataStartRow int) []any {
+func expandRange(startPos, endPos string, table [][]string, currentRow, currentCol, dataStartRow int, headerColMap map[string]int) ([]any, error) {
 	maxRowLen := 0
 	for _, r := range table {
 		if len(r) > maxRowLen {
@@ -516,8 +566,14 @@ func expandRange(startPos, endPos string, table [][]string, currentRow, currentC
 		}
 	}
 
-	startRow, startCol := parseCellPosition(startPos, len(table), maxRowLen, currentRow, currentCol)
-	endRow, endCol := parseCellPosition(endPos, len(table), maxRowLen, currentRow, currentCol)
+	startRow, startCol, err := parseCellPosition(startPos, len(table), maxRowLen, currentRow, currentCol, headerColMap)
+	if err != nil {
+		return nil, fmt.Errorf("invalid range start %q: %w", startPos, err)
+	}
+	endRow, endCol, err := parseCellPosition(endPos, len(table), maxRowLen, currentRow, currentCol, headerColMap)
+	if err != nil {
+		return nil, fmt.Errorf("invalid range end %q: %w", endPos, err)
+	}
 
 	var values []any
 
@@ -527,10 +583,19 @@ func expandRange(startPos, endPos string, table [][]string, currentRow, currentC
 		endCol = currentCol - 1
 	}
 
-	// If only column is specified (no row), iterate through all data rows
+	// If only column is specified (no row):
+	// - If columns differ (horizontal range like $1..$4), use current row only
+	// - If columns are same (vertical range like $1..$1), iterate through all data rows
 	if startRow == -1 && endRow == -1 {
-		startRow = dataStartRow
-		endRow = len(table) - 1
+		if startCol != endCol {
+			// Horizontal range: use current row
+			startRow = currentRow - 1
+			endRow = currentRow - 1
+		} else {
+			// Vertical range: iterate through all data rows
+			startRow = dataStartRow
+			endRow = len(table) - 1
+		}
 	}
 
 	// Expand the range
@@ -546,5 +611,5 @@ func expandRange(startPos, endPos string, table [][]string, currentRow, currentC
 		}
 	}
 
-	return values
+	return values, nil
 }

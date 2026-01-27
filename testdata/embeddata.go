@@ -13,3 +13,9 @@ var Test1TSV string
 
 //go:embed test1-result.tsv
 var Test1ResultTSV string
+
+//go:embed test2.csv
+var Test2CSV string
+
+//go:embed test2-result.csv
+var Test2ResultCSV string

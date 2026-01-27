@@ -2,6 +2,7 @@ package tblfm
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -1112,6 +1113,200 @@ func TestApply_Lua(t *testing.T) {
 
 			if !reflect.DeepEqual(result, tt.expected) {
 				t.Errorf("Apply() returned unexpected result\nGot:  %v\nWant: %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestApply_HeaderNameColumnReference(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    [][]string
+		formulas []string
+		expected [][]string
+	}{
+		{
+			name: "simple header name reference",
+			input: [][]string{
+				{"Item", "Price", "Qty", "Total"},
+				{"Apple", "100", "5", ""},
+				{"Orange", "150", "3", ""},
+			},
+			formulas: []string{"${Total}=${Price}*${Qty}"},
+			expected: [][]string{
+				{"Item", "Price", "Qty", "Total"},
+				{"Apple", "100", "5", "500"},
+				{"Orange", "150", "3", "450"},
+			},
+		},
+		{
+			name: "mixed numeric and header name references",
+			input: [][]string{
+				{"Item", "Price", "Qty", "Total"},
+				{"Apple", "100", "5", ""},
+				{"Orange", "150", "3", ""},
+			},
+			formulas: []string{"$4 = ${Price} * $3"},
+			expected: [][]string{
+				{"Item", "Price", "Qty", "Total"},
+				{"Apple", "100", "5", "500"},
+				{"Orange", "150", "3", "450"},
+			},
+		},
+		{
+			name: "header name with spaces",
+			input: [][]string{
+				{"Item Name", "Unit Price", "Quantity", "Grand Total"},
+				{"Apple", "100", "5", ""},
+				{"Orange", "150", "3", ""},
+			},
+			formulas: []string{"${Grand Total} = ${Unit Price} * ${Quantity}"},
+			expected: [][]string{
+				{"Item Name", "Unit Price", "Quantity", "Grand Total"},
+				{"Apple", "100", "5", "500"},
+				{"Orange", "150", "3", "450"},
+			},
+		},
+		{
+			name: "multiple formulas with header names",
+			input: [][]string{
+				{"Item", "Price", "Qty", "Subtotal", "Tax", "Total"},
+				{"Apple", "100", "5", "", "", ""},
+				{"Orange", "150", "3", "", "", ""},
+			},
+			formulas: []string{
+				"${Subtotal} = ${Price} * ${Qty}",
+				"${Tax} = ${Subtotal} * 0.1",
+				"${Total} = ${Subtotal} + ${Tax}",
+			},
+			expected: [][]string{
+				{"Item", "Price", "Qty", "Subtotal", "Tax", "Total"},
+				{"Apple", "100", "5", "500", "50", "550"},
+				{"Orange", "150", "3", "450", "45", "495"},
+			},
+		},
+		{
+			name: "header name with vsum function using range",
+			input: [][]string{
+				{"Name", "Q1", "Q2", "Q3", "Q4", "Total"},
+				{"Alice", "10", "20", "30", "40", ""},
+				{"Bob", "15", "25", "35", "45", ""},
+			},
+			formulas: []string{"${Total}=vsum(${Q1}..${Q4})"},
+			expected: [][]string{
+				{"Name", "Q1", "Q2", "Q3", "Q4", "Total"},
+				{"Alice", "10", "20", "30", "40", "100"},
+				{"Bob", "15", "25", "35", "45", "120"},
+			},
+		},
+		{
+			name: "header name with row reference",
+			input: [][]string{
+				{"Item", "Price", "Discount"},
+				{"Apple", "100", ""},
+				{"Orange", "150", ""},
+			},
+			formulas: []string{"${Discount} = @<${Price}"},
+			expected: [][]string{
+				{"Item", "Price", "Discount"},
+				{"Apple", "100", "Price"},
+				{"Orange", "150", "Price"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := Apply(tt.input, tt.formulas)
+			if err != nil {
+				t.Fatalf("Apply() returned error: %v", err)
+			}
+
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("Apply() returned unexpected result\nGot:  %v\nWant: %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestApply_HeaderNameErrors(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       [][]string
+		formulas    []string
+		opts        []Option
+		expectError bool
+		errorSubstr string
+	}{
+		{
+			name: "header reference without header mode returns error",
+			input: [][]string{
+				{"Apple", "100", "5", ""},
+				{"Orange", "150", "3", ""},
+			},
+			formulas:    []string{"${Total} = ${Price} * ${Qty}"},
+			opts:        []Option{WithHeader(false)},
+			expectError: true,
+			errorSubstr: "header column",
+		},
+		{
+			name: "non-existent header name returns error",
+			input: [][]string{
+				{"Item", "Price", "Qty", "Total"},
+				{"Apple", "100", "5", ""},
+			},
+			formulas:    []string{"${Total} = ${NonExistent} * ${Qty}"},
+			opts:        []Option{},
+			expectError: true,
+			errorSubstr: "NonExistent",
+		},
+		{
+			name: "non-existent column index returns error",
+			input: [][]string{
+				{"Item", "Price", "Qty", "Total"},
+				{"Apple", "100", "5", ""},
+			},
+			formulas:    []string{"${Total} = $100 * ${Qty}"},
+			opts:        []Option{},
+			expectError: true,
+			errorSubstr: "out of range",
+		},
+		{
+			name: "header reference in target position without header mode",
+			input: [][]string{
+				{"Apple", "100", "5", ""},
+			},
+			formulas:    []string{"${Result} = $2 * $3"},
+			opts:        []Option{WithHeader(false)},
+			expectError: true,
+			errorSubstr: "Result",
+		},
+		{
+			name: "header reference in range without header mode",
+			input: [][]string{
+				{"10", "20", "30", ""},
+			},
+			formulas:    []string{"$4 = vsum(${A}..${C})"},
+			opts:        []Option{WithHeader(false)},
+			expectError: true,
+			errorSubstr: "header column",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Apply(tt.input, tt.formulas, tt.opts...)
+			if tt.expectError {
+				if err == nil {
+					t.Fatalf("Apply() expected error but got none")
+				}
+				if tt.errorSubstr != "" && !strings.Contains(err.Error(), tt.errorSubstr) {
+					t.Errorf("Apply() error %q does not contain %q", err.Error(), tt.errorSubstr)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Apply() unexpected error: %v", err)
+				}
 			}
 		})
 	}
