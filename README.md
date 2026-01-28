@@ -18,50 +18,6 @@ tblcalc is a table calculation tool that applies formulas to CSV/TSV tables. For
 
 5. **In-Place Editing** - Allows direct file modification with the `-i` flag, preserving hard links.
 
-## Automatic Formula/Script File Discovery
-
-`tblcalc` can automatically discover and apply external script files (`.tblfm`, `.mlr`) or skip processing (`.skip`) based on the input CSV/TSV file's name. This allows for cleaner data files and enables applying the same rules to multiple data files that follow a naming convention.
-
-When processing an input file (e.g., `testdata/ledger-2025-01.csv`), `tblcalc` will search for these special files in the same directory using a pattern matching mechanism. For instance, `tblcalc` will look for files like `testdata/ledger-%.csv.tblfm` or `testdata/ledger-2025-01.csv.skip`. The `%` acts as a wildcard, matching any string.
-
--   If a matching **`.skip`** file is found, `tblcalc` will perform no processing and simply output the original file content. This is useful for explicitly excluding certain files from calculations.
--   If a matching **`.tblfm`** or **`.mlr`** file is found, its content is treated as if the directives (e.g., `#+TBLFM:`, `#+MLR:`) were embedded in the input data file itself.
-
-### Example: Ledger with External TBLFM
-
-Consider the following input data and an external `tblfm` file:
-
-**Input file (`testdata/ledger-2025-01.csv`):**
-```csv
-Date,Description,Amount,Category
-2025-01-01,Groceries at local store,-5000,Food
-2025-01-05,Monthly Salary,300000,Income
-# This is a sample ledger data for January 2025.
-2025-01-20,Electricity Bill,-8000,Utilities
-2025-01-25,Freelance Project Payment,50000,Income
-2025-01-28,Internet Service,-6500,Utilities
-TOTAL,,0,
-```
-
-**External formula file (`testdata/ledger-%.csv.tblfm`):**
-```
-@>${Amount}=vsum(@2..@>>)
-```
-
-After processing with `tblcalc testdata/ledger-2025-01.csv`:
-```csv
-Date,Description,Amount,Category
-2025-01-01,Groceries at local store,-5000,Food
-2025-01-05,Monthly Salary,300000,Income
-# This is a sample ledger data for January 2025.
-2025-01-20,Electricity Bill,-8000,Utilities
-2025-01-25,Freelance Project Payment,50000,Income
-2025-01-28,Internet Service,-6500,Utilities
-TOTAL,,330500,
-```
-
-In this example, `tblcalc` automatically finds `testdata/ledger-%.csv.tblfm` because it matches the input filename pattern. The formula `@>${Amount}=vsum(@2..@>>)` is then applied, calculating the sum of the `Amount` column and placing it in the `TOTAL` row.
-
 ## Installation & Usage
 
 Install via: `go install github.com/knaka/tblcalc/cmd/tblcalc@latest`
@@ -127,38 +83,47 @@ Apple,100,50,5000,5000
 Orange,120,20,2400,2400
 ```
 
-## Editor Integration
+### Automatic Formula/Script File Discovery
 
-### VSCode Configuration
+`tblcalc` can automatically discover and apply external script files (`.tblfm`, `.mlr`) or skip processing (`.skip`) based on the input CSV/TSV file's name. This allows for cleaner data files and enables applying the same rules to multiple data files that follow a naming convention.
 
-You can configure VSCode to automatically apply formulas when saving CSV/TSV files using the [Run on Save](https://github.com/emeraldwalk/vscode-runonsave) extension.
+When processing an input file (e.g., `testdata/ledger-2025-01.csv`), `tblcalc` will search for these special files in the same directory using a pattern matching mechanism. For instance, `tblcalc` will look for files like `testdata/ledger-%.csv.tblfm` or `testdata/ledger-2025-01.csv.skip`. The `%` acts as a wildcard, matching any string.
 
-Add this to your `.vscode/settings.json`:
+-   If a matching **`.skip`** file is found, `tblcalc` will perform no processing and simply output the original file content. This is useful for explicitly excluding certain files from calculations.
+-   If a matching **`.tblfm`** or **`.mlr`** file is found, its content is treated as if the directives (e.g., `#+TBLFM:`, `#+MLR:`) were embedded in the input data file itself.
 
-```json
-{
-  "emeraldwalk.runonsave": {
-    "commands": [
-      {
-        "match": "\\.(csv|tsv)$",
-        "cmd": "tblcalc -i ${file}"
-      }
-    ]
-  }
-}
+Consider the following input data and an external `tblfm` file:
+
+**Input file (`testdata/ledger-2025-01.csv`):**
+```csv
+Date,Description,Amount,Category
+2025-01-01,Groceries at local store,-5000,Food
+2025-01-05,Monthly Salary,300000,Income
+# This is a sample ledger data for January 2025.
+2025-01-20,Electricity Bill,-8000,Utilities
+2025-01-25,Freelance Project Payment,50000,Income
+2025-01-28,Internet Service,-6500,Utilities
+TOTAL,,0,
 ```
 
-This automatically processes files with `+TBLFM` directives whenever you save them.
-
-If you use the [Rainbow CSV](https://marketplace.visualstudio.com/items?itemName=mechatroner.rainbow-csv) extension for better CSV/TSV visualization, configure it to recognize comment lines:
-
-```json
-{
-  "rainbow_csv.comment_prefix": "#"
-}
+**External formula file (`testdata/ledger-%.csv.tblfm`):**
+```
+@>${Amount}=vsum(@2..@>>)
 ```
 
-This ensures that comment lines (including `+TBLFM` directives) are properly displayed and not treated as data rows.
+After processing with `tblcalc testdata/ledger-2025-01.csv`:
+```csv
+Date,Description,Amount,Category
+2025-01-01,Groceries at local store,-5000,Food
+2025-01-05,Monthly Salary,300000,Income
+# This is a sample ledger data for January 2025.
+2025-01-20,Electricity Bill,-8000,Utilities
+2025-01-25,Freelance Project Payment,50000,Income
+2025-01-28,Internet Service,-6500,Utilities
+TOTAL,,330500,
+```
+
+In this example, `tblcalc` automatically finds `testdata/ledger-%.csv.tblfm` because it matches the input filename pattern. The formula `@>${Amount}=vsum(@2..@>>)` is then applied, calculating the sum of the `Amount` column and placing it in the `TOTAL` row.
 
 ## Command-Line Options
 
@@ -255,6 +220,39 @@ Multiple formulas can be specified with:
 Lua's string concatenation operator `..` visually resembles the range operator `..`. To prevent confusion:
 - Add spaces around concatenation: `$2 .. " items"`
 - Use parentheses around cell references: `($2)..($3)`
+
+## Editor Integration
+
+### VSCode Configuration
+
+You can configure VSCode to automatically apply formulas when saving CSV/TSV files using the [Run on Save](https://github.com/emeraldwalk/vscode-runonsave) extension.
+
+Add this to your `.vscode/settings.json`:
+
+```json
+{
+  "emeraldwalk.runonsave": {
+    "commands": [
+      {
+        "match": "\\.(csv|tsv)$",
+        "cmd": "tblcalc -i ${file}"
+      }
+    ]
+  }
+}
+```
+
+This automatically processes files with `+TBLFM` directives whenever you save them.
+
+If you use the [Rainbow CSV](https://marketplace.visualstudio.com/items?itemName=mechatroner.rainbow-csv) extension for better CSV/TSV visualization, configure it to recognize comment lines:
+
+```json
+{
+  "rainbow_csv.comment_prefix": "#"
+}
+```
+
+This ensures that comment lines (including `+TBLFM` directives) are properly displayed and not treated as data rows.
 
 ## License
 
