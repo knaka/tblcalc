@@ -2,7 +2,7 @@
 
 ## Core Functionality
 
-tblcalc is a table calculation tool that "applies formulas to CSV/TSV tables using special comment directives, similar to Emacs Org-mode's table formulas."
+tblcalc is a table calculation tool that "applies formulas to CSV/TSV tables using special comment directives, similar to Emacs Org-mode's table formulas and Miller scripts."
 
 ## Key Features
 
