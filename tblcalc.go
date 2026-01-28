@@ -345,7 +345,7 @@ func processWithMlr(
 		Ignore(os.Remove(resultFile.Name()))
 	})()
 	if len(mlrScripts) > 0 {
-		err = mlr.Put(tempPath, mlrScripts, true, inFmt, outFmt, resultFile)
+		err = mlr.Put([]string{tempPath}, mlrScripts, true, inFmt, outFmt, resultFile)
 		if err != nil {
 			return
 		}

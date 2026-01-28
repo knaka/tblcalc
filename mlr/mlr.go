@@ -8,10 +8,9 @@ import (
 )
 
 // Put runs Miller with the specified file and scripts.
-// filePath is the path to the input file. Miller, as a library, does not support processing data in memory.
 // hasHeader indicates whether the first row should be treated as a header.
 func Put(
-	filePath string,
+	files []string,
 	scripts []string,
 	hasHeader bool,
 	inputFormat string,
@@ -41,13 +40,10 @@ func Put(
 	for _, script := range scripts {
 		args = append(args, "-e", script)
 	}
-	args = append(args,
-		filePath,
-	)
 	options, recordTransformers, err := climain.ParseCommandLine(args)
 	if err != nil {
 		return
 	}
-	err = stream.Stream(options.FileNames, options, recordTransformers, writeCloser, true)
+	err = stream.Stream(files, options, recordTransformers, writeCloser, false)
 	return
 }
