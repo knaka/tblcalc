@@ -1,7 +1,7 @@
 package mlr
 
 import (
-	"os"
+	"io"
 
 	"github.com/johnkerl/miller/v6/pkg/climain"
 	"github.com/johnkerl/miller/v6/pkg/stream"
@@ -10,9 +10,16 @@ import (
 // Put runs Miller with the specified file and scripts.
 // filePath is the path to the input file. Miller, as a library, does not support processing data in memory.
 // hasHeader indicates whether the first row should be treated as a header.
-func Put(filePath string, scripts []string, hasHeader bool, inputFormat, outputFormat string, writer *os.File) (err error) {
-	argsSave := os.Args
-	defer func() { os.Args = argsSave }()
+func Put(
+	filePath string,
+	scripts []string,
+	hasHeader bool,
+	inputFormat string,
+	outputFormat string,
+	writeCloser io.WriteCloser,
+) (
+	err error,
+) {
 	args := []string{
 		"mlr",
 		// List of command-line flags - Miller Documentation https://miller.readthedocs.io/en/latest/reference-main-flag-list/
@@ -41,6 +48,6 @@ func Put(filePath string, scripts []string, hasHeader bool, inputFormat, outputF
 	if err != nil {
 		return
 	}
-	err = stream.Stream(options.FileNames, options, recordTransformers, writer, true)
+	err = stream.Stream(options.FileNames, options, recordTransformers, writeCloser, true)
 	return
 }
