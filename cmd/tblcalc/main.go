@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -119,45 +120,102 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 			} else
 			// In-place
 			{
-				outFile, err2 := os.CreateTemp("", appID)
-				if err2 != nil {
-					return fmt.Errorf("failed to create temporary output file: %v", err2)
-				}
-				defer func() {
-					Ignore(outFile.Close())
-					Must(os.Remove(outFile.Name()))
-				}()
-				err2 = tblcalc.ProcessFile(
-					inPath,
-					inputFormat,
-					outFile,
-					outputFormat,
-				)
-				if err2 != nil {
+				err = (func() (err error) {
+					outFile, err2 := os.CreateTemp("", appID)
+					if err2 != nil {
+						return fmt.Errorf("failed to create temporary output file: %v", err2)
+					}
+					defer func() {
+						Ignore(outFile.Close())
+						Must(os.Remove(outFile.Name()))
+					}()
+					err2 = tblcalc.ProcessFile(
+						inPath,
+						inputFormat,
+						outFile,
+						outputFormat,
+					)
+					if err2 != nil {
+						return
+					}
+					name := outFile.Name()
+					Must(outFile.Close())
+					// Compare the original file with the output file using streaming
+					equal, err2 := filesEqual(inPath, name)
+					if err2 != nil {
+						return fmt.Errorf("failed to compare files: %w", err2)
+					}
+					if equal {
+						return
+					}
+					// Replace the original file content while preserving hard links
+					origFile, err2 := os.OpenFile(inPath, os.O_WRONLY|os.O_TRUNC, 0)
+					if err2 != nil {
+						return fmt.Errorf("failed to open original file for writing: %s Error: %v", inPath, err2)
+					}
+					defer (func() { Must(origFile.Close()) })()
+					outFileReader := Value(os.Open(name))
+					defer (func() { Must(outFileReader.Close()) })()
+					Must(io.Copy(origFile, outFileReader))
 					return
+				})()
+				if err != nil {
+					return err
 				}
-				Must(outFile.Close())
-				// Compare the original file with the output file
-				// todo: compare streams
-				outContent, err2 := os.ReadFile(outFile.Name())
-				if err2 != nil {
-					return fmt.Errorf("failed to read output file: %s", outFile.Name())
-				}
-				source := Value(os.ReadFile(inPath))
-				if bytes.Equal(source, outContent) {
-					return err2
-				}
-				// Replace the original file content while preserving hard links
-				origFile, err2 := os.OpenFile(inPath, os.O_WRONLY|os.O_TRUNC, 0)
-				if err2 != nil {
-					return fmt.Errorf("failed to open original file for writing: %s Error: %v", inPath, err2)
-				}
-				defer Must(origFile.Close())
-				Must(origFile.Write(outContent))
 			}
 		}
 	}
 	return
+}
+
+// filesEqual compares two files using streaming to avoid loading entire files into memory.
+func filesEqual(file1, file2 string) (bool, error) {
+	f1, err := os.Open(file1)
+	if err != nil {
+		return false, err
+	}
+	defer (func() { Must(f1.Close()) })()
+
+	f2, err := os.Open(file2)
+	if err != nil {
+		return false, err
+	}
+	defer (func() { Must(f2.Close()) })()
+
+	// 1. Check file sizes first (quick optimization)
+	s1, err := f1.Stat()
+	if err != nil {
+		return false, err
+	}
+	s2, err := f2.Stat()
+	if err != nil {
+		return false, err
+	}
+	if s1.Size() != s2.Size() {
+		return false, nil
+	}
+
+	// 2. Compare content chunk by chunk
+	r1 := bufio.NewReader(f1)
+	r2 := bufio.NewReader(f2)
+	buf1 := make([]byte, 4096)
+	buf2 := make([]byte, 4096)
+
+	for {
+		n1, err1 := r1.Read(buf1)
+		n2, err2 := r2.Read(buf2)
+
+		if n1 != n2 || !bytes.Equal(buf1[:n1], buf2[:n2]) {
+			return false, nil
+		}
+
+		if err1 == io.EOF && err2 == io.EOF {
+			return true, nil
+		}
+		if err1 != nil || err2 != nil {
+			return false, err1 // Or handle errors separately
+		}
+	}
 }
 
 func main() {
