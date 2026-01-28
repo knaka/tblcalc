@@ -8,7 +8,9 @@ import (
 	"io"
 	"iter"
 	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -172,12 +174,15 @@ func ProcessStream(
 // and writes the result to writer. Comment lines starting with "# +TBLFM:" contain
 // formulas that are applied to the table data. The input and output formats are
 // specified by inputFormat and outputFormat parameters.
-// If ${filepath}.skip exists, no formulas or scripts are applied.
-// Otherwise, if ${filepath}.tblfm exists, its contents are parsed as formulas
-// (split by newlines and "::"). Similarly, if ${filepath}.mlr exists, its contents
-// are used as a Miller script.
+// External files with extensions .skip, .tblfm, .mlr are searched in the same directory.
+// The "%" character in these filenames acts as a wildcard (like SQL LIKE).
+// For example, "foo%baz.csv.skip" matches "foo-bar-baz.csv".
+// If a matching .skip file exists, no formulas or scripts are applied.
+// If a matching .tblfm file exists, its contents are parsed as formulas
+// (split by newlines and "::"). Similarly, if a matching .mlr file exists,
+// its contents are used as a Miller script.
 func ProcessFile(
-	filepath string,
+	filePath string,
 	inputFormat InputFormat,
 	writer io.Writer,
 	outputFormat OutputFormat,
@@ -185,9 +190,11 @@ func ProcessFile(
 ) (
 	err error,
 ) {
-	// Skip all processing if ${filepath}.skip exists
-	if _, err := os.Stat(filepath + ".skip"); err == nil {
-		if reader, err := os.Open(filepath); err != nil {
+	dir := filepath.Dir(filePath)
+	base := filepath.Base(filePath)
+	// Check for .skip file
+	if len(findMatchingFiles(dir, base, ".skip")) > 0 {
+		if reader, err := os.Open(filePath); err != nil {
 			return err
 		} else {
 			defer (func() { Must(reader.Close()) })()
@@ -195,21 +202,84 @@ func ProcessFile(
 			return nil
 		}
 	}
-	// Load formulas from ${filepath}.tblfm if exists
-	if content, err := os.ReadFile(filepath + ".tblfm"); err == nil {
-		formulas := splitFormulas(string(content))
-		if len(formulas) > 0 {
-			opts = append(opts, WithFormulas(formulas))
+	// Load formulas from matching .tblfm file
+	var formulas []string
+	for _, tblfmFile := range findMatchingFiles(dir, base, ".tblfm") {
+		if content, err := os.ReadFile(tblfmFile); err == nil {
+			formulas = append(formulas, splitFormulas(string(content))...)
 		}
 	}
-	// Load script from ${filepath}.mlr if exists
-	if content, err := os.ReadFile(filepath + ".mlr"); err == nil {
-		script := strings.TrimSpace(string(content))
-		if script != "" {
-			opts = append(opts, WithScripts([]string{script}))
+	if len(formulas) > 0 {
+		opts = append(opts, WithFormulas(formulas))
+	}
+	// Load script from matching .mlr file
+	var scripts []string
+	for _, mlrFile := range findMatchingFiles(dir, base, ".mlr") {
+		if content, err := os.ReadFile(mlrFile); err == nil {
+			script := strings.TrimSpace(string(content))
+			if script != "" {
+				scripts = append(scripts, script)
+			}
 		}
 	}
-	return process(filepath, nil, inputFormat, writer, outputFormat, opts...)
+	if len(scripts) > 0 {
+		opts = append(opts, WithScripts(scripts))
+	}
+	return process(filePath, nil, inputFormat, writer, outputFormat, opts...)
+}
+
+// findMatchingFiles searches for files in dir that match the target filename
+// with the given suffix. First checks for an exact match (target + suffix),
+// then searches for wildcard patterns using "%" as the wildcard character.
+func findMatchingFiles(dir, target, suffix string) []string {
+	found := make(map[string]struct{})
+
+	// First, check for exact match
+	exactPath := filepath.Join(dir, target+suffix)
+	if _, err := os.Stat(exactPath); err == nil {
+		found[exactPath] = struct{}{}
+	}
+
+	// Search for wildcard patterns
+	pattern := filepath.Join(dir, "*"+suffix)
+	matches, err := filepath.Glob(pattern)
+	if err == nil {
+		for _, match := range matches {
+			base := filepath.Base(match)
+			patternBase := strings.TrimSuffix(base, suffix)
+			if matchWildcard(patternBase, target) {
+				found[match] = struct{}{}
+			}
+		}
+	}
+
+	if len(found) == 0 {
+		return nil
+	}
+
+	result := make([]string, 0, len(found))
+	for f := range found {
+		result = append(result, f)
+	}
+	sort.Strings(result)
+	return result
+}
+
+// matchWildcard checks if target matches the pattern where "%" acts as a wildcard.
+// For example, "foo%baz" matches "foo-bar-baz" or "fooXYZbaz".
+func matchWildcard(pattern, target string) bool {
+	// If no wildcard, require exact match
+	if !strings.Contains(pattern, "%") {
+		return pattern == target
+	}
+	// Convert "%" to ".*" for regex matching
+	regexPattern := "^" + regexp.QuoteMeta(pattern) + "$"
+	regexPattern = strings.ReplaceAll(regexPattern, "%", ".*")
+	re, err := regexp.Compile(regexPattern)
+	if err != nil {
+		return false
+	}
+	return re.MatchString(target)
 }
 
 // splitFormulas splits content by newlines and "::" separator.

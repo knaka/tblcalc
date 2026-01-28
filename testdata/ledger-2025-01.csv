@@ -1,0 +1,8 @@
+Date,Description,Amount,Category
+2025-01-01,Groceries at local store,-5000,Food
+2025-01-05,Monthly Salary,300000,Income
+# This is a sample ledger data for January 2025.
+2025-01-20,Electricity Bill,-8000,Utilities
+2025-01-25,Freelance Project Payment,50000,Income
+2025-01-28,Internet Service,-6500,Utilities
+TOTAL,,0,

@@ -125,3 +125,37 @@ func TestExecute_Miller(t *testing.T) {
 		})
 	}
 }
+
+func TestExecute_Ledger(t *testing.T) {
+	tests := []struct {
+		name         string
+		inputPath    string
+		expectedPath string
+		opts         Options
+	}{
+		{
+			name:         "ledger with tblfm",
+			inputPath:    filepath.Join("testdata", "ledger-2025-01.csv"),
+			expectedPath: filepath.Join("testdata", "ledger-2025-01-result.csv"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			expectedData, err := os.ReadFile(tt.expectedPath)
+			if err != nil {
+				t.Fatalf("Failed to read expected file: %v", err)
+			}
+
+			var output bytes.Buffer
+			err = ProcessFile(tt.inputPath, InputFormatCSV, &output, OutputFormatCSV, tt.opts...)
+			if err != nil {
+				t.Fatalf("Execute failed: %v", err)
+			}
+
+			if output.String() != string(expectedData) {
+				t.Errorf("Output mismatch:\nGot:\n%s\nExpected:\n%s", output.String(), string(expectedData))
+			}
+		})
+	}
+}

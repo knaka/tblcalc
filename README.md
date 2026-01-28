@@ -2,7 +2,7 @@
 
 ## Core Functionality
 
-tblcalc is a table calculation tool that "applies formulas to CSV/TSV tables using special comment directives, similar to Emacs Org-mode's table formulas and Miller scripts."
+tblcalc is a table calculation tool that applies formulas to CSV/TSV tables. Formulas can be embedded in the data file using special comment directives (e.g., `#+TBLFM:`) or placed in external files that are automatically discovered based on the data file's name. This functionality is inspired by Emacs Org-mode's table formulas and Miller scripts.
 
 ## Key Features
 
@@ -17,6 +17,50 @@ tblcalc is a table calculation tool that "applies formulas to CSV/TSV tables usi
 4. **Format Support** - Supports both CSV (Comma-Separated Values) and TSV (Tab-Separated Values) formats for input and output.
 
 5. **In-Place Editing** - Allows direct file modification with the `-i` flag, preserving hard links.
+
+## Automatic Formula/Script File Discovery
+
+`tblcalc` can automatically discover and apply external script files (`.tblfm`, `.mlr`) or skip processing (`.skip`) based on the input CSV/TSV file's name. This allows for cleaner data files and enables applying the same rules to multiple data files that follow a naming convention.
+
+When processing an input file (e.g., `testdata/ledger-2025-01.csv`), `tblcalc` will search for these special files in the same directory using a pattern matching mechanism. For instance, `tblcalc` will look for files like `testdata/ledger-%.csv.tblfm` or `testdata/ledger-2025-01.csv.skip`. The `%` acts as a wildcard, matching any string.
+
+-   If a matching **`.skip`** file is found, `tblcalc` will perform no processing and simply output the original file content. This is useful for explicitly excluding certain files from calculations.
+-   If a matching **`.tblfm`** or **`.mlr`** file is found, its content is treated as if the directives (e.g., `#+TBLFM:`, `#+MLR:`) were embedded in the input data file itself.
+
+### Example: Ledger with External TBLFM
+
+Consider the following input data and an external `tblfm` file:
+
+**Input file (`testdata/ledger-2025-01.csv`):**
+```csv
+Date,Description,Amount,Category
+2025-01-01,Groceries at local store,-5000,Food
+2025-01-05,Monthly Salary,300000,Income
+# This is a sample ledger data for January 2025.
+2025-01-20,Electricity Bill,-8000,Utilities
+2025-01-25,Freelance Project Payment,50000,Income
+2025-01-28,Internet Service,-6500,Utilities
+TOTAL,,0,
+```
+
+**External formula file (`testdata/ledger-%.csv.tblfm`):**
+```
+@>${Amount}=vsum(@2..@>>)
+```
+
+After processing with `tblcalc testdata/ledger-2025-01.csv`:
+```csv
+Date,Description,Amount,Category
+2025-01-01,Groceries at local store,-5000,Food
+2025-01-05,Monthly Salary,300000,Income
+# This is a sample ledger data for January 2025.
+2025-01-20,Electricity Bill,-8000,Utilities
+2025-01-25,Freelance Project Payment,50000,Income
+2025-01-28,Internet Service,-6500,Utilities
+TOTAL,,330500,
+```
+
+In this example, `tblcalc` automatically finds `testdata/ledger-%.csv.tblfm` because it matches the input filename pattern. The formula `@>${Amount}=vsum(@2..@>>)` is then applied, calculating the sum of the `Amount` column and placing it in the `TOTAL` row.
 
 ## Installation & Usage
 
