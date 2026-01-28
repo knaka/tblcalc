@@ -6,9 +6,9 @@ import (
 	mlrentry "github.com/johnkerl/miller/v6/pkg/entrypoint"
 )
 
-// mlrMDInplacePut runs Miller with the specified file path and script for processing.
+// InplacePutMarkdown runs Miller with the specified file path and script for processing.
 // filePath is the path to the input file. Miller, as a library, does not support processing data in memory.
-func mlrMDInplacePut(filePath string, script string) {
+func InplacePutMarkdown(filePath string, script string) {
 	argsSave := os.Args
 	defer func() { os.Args = argsSave }()
 	os.Args = []string{

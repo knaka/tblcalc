@@ -295,7 +295,7 @@ func processWithMlr(
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 	tempPath := tempFile.Name()
-	defer os.Remove(tempPath)
+	defer (func() { Must(os.Remove(tempPath)) })()
 
 	// Write input to temp file
 	if _, err = io.Copy(tempFile, reader); err != nil {
