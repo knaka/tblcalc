@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/knaka/go-utils/funcopt"
 
+	"github.com/knaka/tblcalc/mlr"
 	"github.com/knaka/tblcalc/tblfm"
 
 	//lint:ignore ST1001
@@ -47,6 +49,12 @@ var commentFormulaRe = sync.OnceValue(func() *regexp.Regexp {
 
 const commentFormulaIdx = 1
 
+var commentScriptRe = sync.OnceValue(func() *regexp.Regexp {
+	return regexp.MustCompile(`^#\s*\+(MLR|MILLER)\s*:\s*(.*)\s*$`)
+})
+
+const commentScriptIdx = 2
+
 // tblcalcParams holds configuration parameters.
 type tblcalcParams struct {
 	ignoreExit bool
@@ -80,6 +88,7 @@ func Execute(
 		return
 	}
 	var formulas []string
+	var scripts []string
 	// Use bufio.Reader to read line by line
 	bufReader := bufio.NewReader(reader)
 	var commentBlock strings.Builder
@@ -97,6 +106,9 @@ func Execute(
 		if matches := commentFormulaRe().FindStringSubmatch(line); matches != nil {
 			formula := matches[commentFormulaIdx]
 			formulas = append(formulas, formula)
+		} else if matches := commentScriptRe().FindStringSubmatch(line); matches != nil {
+			script := matches[commentScriptIdx]
+			scripts = append(scripts, script)
 		}
 	}
 	// Reconstruct reader with this line and remaining content
@@ -104,7 +116,12 @@ func Execute(
 		strings.NewReader(commentBlock.String()),
 		bufReader,
 	)
-	return processWithTBLFMLib(reader, inputFormat, writer, outputFormat, formulas, params.ignoreExit)
+	if len(formulas) > 0 {
+		return processWithTBLFMLib(reader, inputFormat, writer, outputFormat, formulas, params.ignoreExit)
+	} else if len(scripts) > 0 {
+		return processWithMlr(reader, inputFormat, writer, outputFormat, scripts, params.ignoreExit)
+	}
+	return nil
 }
 
 func csvRecordsSeq(
@@ -259,5 +276,77 @@ func writeTSV(writer io.Writer, table [][]string, commentLines map[int]string) e
 			}
 		}
 	}
+	return nil
+}
+
+func processWithMlr(
+	reader io.Reader,
+	inputFormat InputFormat,
+	writer io.Writer,
+	outputFormat OutputFormat,
+	scripts []string,
+	ignoreExit bool,
+) (
+	err error,
+) {
+	// Create a temporary file for Miller processing
+	tempFile, err := os.CreateTemp("", "tblcalc-*.csv")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath)
+
+	// Write input to temp file
+	if _, err = io.Copy(tempFile, reader); err != nil {
+		tempFile.Close()
+		return fmt.Errorf("failed to write to temp file: %w", err)
+	}
+	if err = tempFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	// Determine format strings for Miller
+	var inFmt, outFmt string
+	switch inputFormat {
+	case InputFormatCSV:
+		inFmt = "csv"
+	case InputFormatTSV:
+		inFmt = "tsv"
+	}
+	switch outputFormat {
+	case OutputFormatCSV:
+		outFmt = "csv"
+	case OutputFormatTSV:
+		outFmt = "tsv"
+	}
+
+	// Run Miller for each script
+	var mlrScripts []string
+	for _, script := range scripts {
+		if script == "exit" {
+			if ignoreExit {
+				continue
+			} else {
+				break
+			}
+		}
+		mlrScripts = append(mlrScripts, script)
+	}
+	if len(mlrScripts) > 0 {
+		mlr.InplacePut(tempPath, mlrScripts, true, inFmt, outFmt)
+	}
+
+	// Read result and write to output
+	resultFile, err := os.Open(tempPath)
+	if err != nil {
+		return fmt.Errorf("failed to open result file: %w", err)
+	}
+	defer (func() { Must(resultFile.Close()) })()
+
+	if _, err = io.Copy(writer, resultFile); err != nil {
+		return fmt.Errorf("failed to write output: %w", err)
+	}
+
 	return nil
 }

@@ -10,11 +10,13 @@ tblcalc is a table calculation tool that "applies formulas to CSV/TSV tables usi
 
 1. **+TBLFM Directive** - Applies table formulas specified in comment lines to CSV/TSV data files. Formulas use column references (e.g., `$2`, `$3`, `$4`) to perform calculations across table cells.
 
-2. **Comment Preservation** - Maintains all comment lines (lines starting with `#`) in their original positions while processing table data.
+2. **+MLR Directive** - Applies Miller commands specified in comment lines to CSV/TSV data files. For more details on Miller's DSL, refer to the official [Miller](https://miller.readthedocs.io/) documentation.
 
-3. **Format Support** - Supports both CSV (Comma-Separated Values) and TSV (Tab-Separated Values) formats for input and output.
+3. **Comment Preservation** - Maintains all comment lines (lines starting with `#`) in their original positions while processing table data.
 
-4. **In-Place Editing** - Allows direct file modification with the `-i` flag, preserving hard links.
+4. **Format Support** - Supports both CSV (Comma-Separated Values) and TSV (Tab-Separated Values) formats for input and output.
+
+5. **In-Place Editing** - Allows direct file modification with the `-i` flag, preserving hard links.
 
 ## Installation & Usage
 
@@ -25,7 +27,7 @@ Basic commands:
 - In-place editing: `tblcalc -i file.csv`
 - Force format: `tblcalc --icsv --ocsv file.txt`
 
-### Example
+### TBLFM Example
 
 Input file (test.csv):
 ```csv
@@ -49,6 +51,36 @@ After processing with `tblcalc test.csv`:
 Apple,100,50,5000
 Banana,80,30,2400
 Orange,120,20,2400
+```
+
+### Miller Example
+
+Input file (`mlr-test1.csv`):
+```csv
+# Product list
+#
+#+MLR: ${Total}=${Unit Price}*${Stock}
+#+MLR: ${Total2}=${Unit Price}*${Stock}
+#
+Product,Unit Price,Stock,Total,Total2
+Apple,100,50,,
+"Banana ""Cavendish"", Premium",80,30,,
+# Another comment
+Orange,120,20,,
+```
+
+After processing with `tblcalc mlr-test1.csv`:
+```csv
+# Product list
+#
+#+MLR: ${Total}=${Unit Price}*${Stock}
+#+MLR: ${Total2}=${Unit Price}*${Stock}
+#
+Product,Unit Price,Stock,Total,Total2
+Apple,100,50,5000,5000
+"Banana ""Cavendish"", Premium",80,30,2400,2400
+# Another comment
+Orange,120,20,2400,2400
 ```
 
 ## Editor Integration

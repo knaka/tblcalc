@@ -1,0 +1,11 @@
+# Product list
+#
+#+MLR: ${Total}=${Unit Price}*${Stock}
+#+MLR: exit
+#+MLR: ${Total2}=${Unit Price}*${Stock}
+#
+Product,Unit Price,Stock,Total,Total2
+Apple,100,50,,
+"Banana ""Cavendish"", Premium",80,30,,
+# Another comment
+Orange,120,20,,
