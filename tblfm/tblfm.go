@@ -14,9 +14,13 @@ import (
 // Option is a functional option for Apply.
 type Option func(*config)
 
+// Options is a functional options for Apply.
+type Options []func(*config)
+
 // config holds the configuration for Apply.
 type config struct {
-	hasHeader bool
+	hasHeader  bool
+	ignoreExit bool
 }
 
 // WithHeader specifies whether the first row is a header row.
@@ -24,6 +28,14 @@ type config struct {
 func WithHeader(hasHeader bool) Option {
 	return func(c *config) {
 		c.hasHeader = hasHeader
+	}
+}
+
+// WithHeader specifies whether the first row is a header row.
+// Default is true (has header).
+func WithIgnoreExit(ignoreExit bool) Option {
+	return func(c *config) {
+		c.ignoreExit = ignoreExit
 	}
 }
 
@@ -258,6 +270,14 @@ func Apply(
 		formula = strings.TrimSpace(formula)
 		if formula == "" {
 			continue
+		}
+
+		if formula == "exit" {
+			if cfg.ignoreExit {
+				continue
+			} else {
+				return
+			}
 		}
 
 		// Parse formula

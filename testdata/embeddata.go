@@ -19,3 +19,12 @@ var Test2CSV string
 
 //go:embed test2-result.csv
 var Test2ResultCSV string
+
+//go:embed test3.csv
+var Test3CSV string
+
+//go:embed test3-exited.csv
+var Test3ExitedCSV string
+
+//go:embed test3-not-exited.csv
+var Test3NotExitedCSV string

@@ -49,15 +49,14 @@ const commentFormulaIdx = 1
 
 // tblcalcParams holds configuration parameters.
 type tblcalcParams struct {
-	force bool
+	ignoreExit bool
 }
 
 // Options is functional options type
 type Options []funcopt.Option[tblcalcParams]
 
-// WithFOrce sets the forcity.
-var WithVerbose = funcopt.New(func(params *tblcalcParams, verbose bool) {
-	params.force = verbose
+var WithIgnoreExit = funcopt.New(func(params *tblcalcParams, ignoreExit bool) {
+	params.ignoreExit = ignoreExit
 })
 
 // Execute reads data from reader, applies table formulas found in comment lines,
@@ -74,7 +73,7 @@ func Execute(
 	err error,
 ) {
 	params := tblcalcParams{
-		force: false,
+		ignoreExit: false,
 	}
 	err = funcopt.Apply(&params, opts)
 	if err != nil {
@@ -105,7 +104,7 @@ func Execute(
 		strings.NewReader(commentBlock.String()),
 		bufReader,
 	)
-	return processWithTBLFMLib(reader, inputFormat, writer, outputFormat, formulas)
+	return processWithTBLFMLib(reader, inputFormat, writer, outputFormat, formulas, params.ignoreExit)
 }
 
 func csvRecordsSeq(
@@ -174,6 +173,7 @@ func processWithTBLFMLib(
 	writer io.Writer,
 	outputFormat OutputFormat,
 	formulas []string,
+	ignoreExit bool,
 ) (
 	err error,
 ) {
@@ -192,8 +192,12 @@ func processWithTBLFMLib(
 	for record := range recordsSeq {
 		table = append(table, record)
 	}
+	var opts []tblfm.Option
+	if ignoreExit {
+		opts = append(opts, tblfm.WithIgnoreExit(true))
+	}
 	// Apply formulas
-	if table, err = tblfm.Apply(table, formulas, tblfm.WithHeader(true)); err != nil {
+	if table, err = tblfm.Apply(table, formulas, opts...); err != nil {
 		return fmt.Errorf("failed to apply formulas: %v", err)
 	}
 	// Write output with comments preserved

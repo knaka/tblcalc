@@ -1,0 +1,11 @@
+# Product list
+#
+#+TBLFM: $4=$2*$3
+#+TBLFM: exit
+#+TBLFM: $5=$2*$3
+#
+"Product","Unit Price",Stock,Total,Total2
+Apple,100,50,,
+"Banana ""Cavendish"", Premium",80,30,,
+# Another comment
+Orange,120,20,,
