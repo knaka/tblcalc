@@ -58,6 +58,8 @@ const commentScriptIdx = 2
 // tblcalcParams holds configuration parameters.
 type tblcalcParams struct {
 	ignoreExit bool
+	formulas   []string
+	scripts    []string
 }
 
 // Options is a functional options type.
@@ -65,6 +67,14 @@ type Options []funcopt.Option[tblcalcParams]
 
 var WithIgnoreExit = funcopt.New(func(params *tblcalcParams, ignoreExit bool) {
 	params.ignoreExit = ignoreExit
+})
+
+var WithFormulas = funcopt.New(func(params *tblcalcParams, formulas []string) {
+	params.formulas = append(params.formulas, formulas...)
+})
+
+var WithScripts = funcopt.New(func(params *tblcalcParams, scripts []string) {
+	params.scripts = append(params.scripts, scripts...)
 })
 
 // process is an internal function that handles both file and stream processing.
@@ -93,8 +103,8 @@ func process(
 		defer (func() { Must(inFile.Close()) })()
 		reader = inFile
 	}
-	var formulas []string
-	var scripts []string
+	formulas := params.formulas
+	scripts := params.scripts
 	// Use bufio.Reader to read line by line
 	bufReader := bufio.NewReader(reader)
 	var commentBlock strings.Builder
@@ -162,14 +172,58 @@ func ProcessStream(
 // and writes the result to writer. Comment lines starting with "# +TBLFM:" contain
 // formulas that are applied to the table data. The input and output formats are
 // specified by inputFormat and outputFormat parameters.
+// If ${filepath}.skip exists, no formulas or scripts are applied.
+// Otherwise, if ${filepath}.tblfm exists, its contents are parsed as formulas
+// (split by newlines and "::"). Similarly, if ${filepath}.mlr exists, its contents
+// are used as a Miller script.
 func ProcessFile(
 	filepath string,
 	inputFormat InputFormat,
 	writer io.Writer,
 	outputFormat OutputFormat,
 	opts ...funcopt.Option[tblcalcParams],
-) error {
+) (
+	err error,
+) {
+	// Skip all processing if ${filepath}.skip exists
+	if _, err := os.Stat(filepath + ".skip"); err == nil {
+		if reader, err := os.Open(filepath); err != nil {
+			return err
+		} else {
+			defer (func() { Must(reader.Close()) })()
+			Must(io.Copy(writer, reader))
+			return nil
+		}
+	}
+	// Load formulas from ${filepath}.tblfm if exists
+	if content, err := os.ReadFile(filepath + ".tblfm"); err == nil {
+		formulas := splitFormulas(string(content))
+		if len(formulas) > 0 {
+			opts = append(opts, WithFormulas(formulas))
+		}
+	}
+	// Load script from ${filepath}.mlr if exists
+	if content, err := os.ReadFile(filepath + ".mlr"); err == nil {
+		script := strings.TrimSpace(string(content))
+		if script != "" {
+			opts = append(opts, WithScripts([]string{script}))
+		}
+	}
 	return process(filepath, nil, inputFormat, writer, outputFormat, opts...)
+}
+
+// splitFormulas splits content by newlines and "::" separator.
+func splitFormulas(content string) []string {
+	var result []string
+	for line := range strings.SplitSeq(content, "\n") {
+		for part := range strings.SplitSeq(line, "::") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				result = append(result, part)
+			}
+		}
+	}
+	return result
 }
 
 func csvRecordsSeq(
