@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/knaka/go-utils/funcopt"
+
 	"github.com/knaka/tblcalc/tblfm"
 
 	//lint:ignore ST1001
@@ -39,11 +41,24 @@ const (
 	OutputFormatTSV
 )
 
-var reCommentFormula = sync.OnceValue(func() *regexp.Regexp {
+var commentFormulaRe = sync.OnceValue(func() *regexp.Regexp {
 	return regexp.MustCompile(`^#\s*\+TBLFM\s*:\s*(.*)\s*$`)
 })
 
-const idxFormula = 1
+const commentFormulaIdx = 1
+
+// tblcalcParams holds configuration parameters.
+type tblcalcParams struct {
+	force bool
+}
+
+// Options is functional options type
+type Options []funcopt.Option[tblcalcParams]
+
+// WithFOrce sets the forcity.
+var WithVerbose = funcopt.New(func(params *tblcalcParams, verbose bool) {
+	params.force = verbose
+})
 
 // Execute reads data from reader, applies table formulas found in comment lines,
 // and writes the result to writer. Comment lines starting with "# +TBLFM:" contain
@@ -54,9 +69,17 @@ func Execute(
 	inputFormat InputFormat,
 	writer io.Writer,
 	outputFormat OutputFormat,
+	opts ...funcopt.Option[tblcalcParams],
 ) (
 	err error,
 ) {
+	params := tblcalcParams{
+		force: false,
+	}
+	err = funcopt.Apply(&params, opts)
+	if err != nil {
+		return
+	}
 	var formulas []string
 	// Use bufio.Reader to read line by line
 	bufReader := bufio.NewReader(reader)
@@ -72,8 +95,8 @@ func Execute(
 			break
 		}
 		line = strings.TrimSpace(line)
-		if matches := reCommentFormula().FindStringSubmatch(line); matches != nil {
-			formula := matches[idxFormula]
+		if matches := commentFormulaRe().FindStringSubmatch(line); matches != nil {
+			formula := matches[commentFormulaIdx]
 			formulas = append(formulas, formula)
 		}
 	}
