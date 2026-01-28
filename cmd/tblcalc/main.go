@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -52,103 +51,110 @@ func tblcalcEntry(params *tblcalcParams) (err error) {
 		params.args = append(params.args, stdinFileName)
 	}
 	for _, inPath := range params.args {
-		err = func() (err error) {
-			var inputFormat tblcalc.InputFormat
-			var reader io.Reader
-			if inPath == stdinFileName {
-				if params.inPlace {
-					return fmt.Errorf("cannot use in-place mode with standard input")
-				}
-				if params.optForcedInputFormat == nil {
-					return fmt.Errorf("must specify input format with standard input")
-				}
-				inputFormat = *params.optForcedInputFormat
-				reader = params.stdin
-			} else {
-				if params.optForcedInputFormat != nil {
-					inputFormat = *params.optForcedInputFormat
-				} else {
-					ext := strings.ToLower(path.Ext(inPath))
-					switch ext {
-					case ".csv":
-						inputFormat = tblcalc.InputFormatCSV
-					case ".tsv":
-						inputFormat = tblcalc.InputFormatTSV
-					default:
-						return fmt.Errorf("unexpected file extension \"%s\"", ext)
+		// Standard input
+		if inPath == stdinFileName {
+			if params.inPlace {
+				return fmt.Errorf("cannot use in-place mode with standard input")
+			}
+			if params.optForcedInputFormat == nil {
+				return fmt.Errorf("must specify input format with standard input")
+			}
+			inputFormat := *params.optForcedInputFormat
+			outputFormat := (func() tblcalc.OutputFormat {
+				if params.optForcedOutputFormat == nil {
+					switch inputFormat {
+					case tblcalc.InputFormatCSV:
+						return tblcalc.OutputFormatCSV
+					case tblcalc.InputFormatTSV:
+						return tblcalc.OutputFormatTSV
 					}
 				}
-				inFile, err2 := os.Open(inPath)
-				if err2 != nil {
-					return fmt.Errorf("failed to open input file: %s Error: %v", inPath, err2)
-				}
-				defer (func() { Ignore(inFile.Close()) })()
-				reader = inFile
-			}
-			var outputFormat tblcalc.OutputFormat
-			if params.optForcedOutputFormat != nil {
-				outputFormat = *params.optForcedOutputFormat
-			} else {
-				switch inputFormat {
-				case tblcalc.InputFormatCSV:
-					outputFormat = tblcalc.OutputFormatCSV
-				case tblcalc.InputFormatTSV:
-					outputFormat = tblcalc.OutputFormatTSV
-				}
-			}
-			var optOutFile *os.File
-			var writer io.Writer
-			if params.inPlace {
-				optOutFile, err = os.CreateTemp("", appID)
-				if err != nil {
-					return fmt.Errorf("failed to create temporary output file: %v", err)
-				}
-				defer func() {
-					Ignore(optOutFile.Close())
-					Must(os.Remove(optOutFile.Name()))
-				}()
-				writer = optOutFile
-			} else {
-				optOutFile = nil
-				writer = params.stdout
-			}
-			bufOut := bufio.NewWriter(writer)
-			err = tblcalc.Execute(
-				reader,
+				return *params.optForcedOutputFormat
+			})()
+			err = tblcalc.ProcessStream(
+				params.stdin,
 				inputFormat,
-				bufOut,
+				params.stdout,
 				outputFormat,
 			)
 			if err != nil {
-				return fmt.Errorf("failed to preprocess: %v", err)
+				return
 			}
-			err = bufOut.Flush()
-			if err != nil {
-				return fmt.Errorf("failed to flush output: %v", err)
+		} else
+		// File specified
+		{
+			var inputFormat tblcalc.InputFormat
+			if params.optForcedInputFormat == nil {
+				ext := strings.ToLower(path.Ext(inPath))
+				switch ext {
+				case ".csv":
+					inputFormat = tblcalc.InputFormatCSV
+				case ".tsv":
+					inputFormat = tblcalc.InputFormatTSV
+				default:
+					return fmt.Errorf("unexpected file extension \"%s\"", ext)
+				}
 			}
-			if params.inPlace {
-				Must(optOutFile.Close())
-				// Compare the original file with the output file
-				outContent, err := os.ReadFile(optOutFile.Name())
+			outputFormat := (func() tblcalc.OutputFormat {
+				if params.optForcedOutputFormat == nil {
+					switch inputFormat {
+					case tblcalc.InputFormatCSV:
+						return tblcalc.OutputFormatCSV
+					case tblcalc.InputFormatTSV:
+						return tblcalc.OutputFormatTSV
+					}
+				}
+				return *params.optForcedOutputFormat
+			})()
+			if !params.inPlace {
+				err = tblcalc.ProcessFile(
+					inPath,
+					inputFormat,
+					params.stdout,
+					outputFormat,
+				)
 				if err != nil {
-					return fmt.Errorf("failed to read output file: %s", optOutFile.Name())
+					return
+				}
+			} else
+			// In-place
+			{
+				outFile, err2 := os.CreateTemp("", appID)
+				if err2 != nil {
+					return fmt.Errorf("failed to create temporary output file: %v", err2)
+				}
+				defer func() {
+					Ignore(outFile.Close())
+					Must(os.Remove(outFile.Name()))
+				}()
+				err2 = tblcalc.ProcessFile(
+					inPath,
+					inputFormat,
+					outFile,
+					outputFormat,
+				)
+				if err2 != nil {
+					return
+				}
+				Must(outFile.Close())
+				// Compare the original file with the output file
+				// todo: compare streams
+				outContent, err2 := os.ReadFile(outFile.Name())
+				if err2 != nil {
+					return fmt.Errorf("failed to read output file: %s", outFile.Name())
 				}
 				source := Value(os.ReadFile(inPath))
 				if bytes.Equal(source, outContent) {
-					return err
+					return err2
 				}
 				// Replace the original file content while preserving hard links
-				origFile, err := os.OpenFile(inPath, os.O_WRONLY|os.O_TRUNC, 0)
-				if err != nil {
-					return fmt.Errorf("failed to open original file for writing: %s Error: %v", inPath, err)
+				origFile, err2 := os.OpenFile(inPath, os.O_WRONLY|os.O_TRUNC, 0)
+				if err2 != nil {
+					return fmt.Errorf("failed to open original file for writing: %s Error: %v", inPath, err2)
 				}
 				defer Must(origFile.Close())
 				Must(origFile.Write(outContent))
 			}
-			return
-		}()
-		if err != nil {
-			break
 		}
 	}
 	return

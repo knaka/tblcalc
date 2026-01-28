@@ -45,7 +45,7 @@ func TestExecute_CSV(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			input := strings.NewReader(tt.input)
 			var output bytes.Buffer
-			err := Execute(input, InputFormatCSV, &output, OutputFormatCSV, tt.opts...)
+			err := ProcessStream(input, InputFormatCSV, &output, OutputFormatCSV, tt.opts...)
 			if err != nil {
 				t.Fatalf("Execute failed: %v", err)
 			}
@@ -60,7 +60,7 @@ func TestExecute_CSV(t *testing.T) {
 func TestExecute_TSV(t *testing.T) {
 	input := strings.NewReader(testdata.Test1TSV)
 	var output bytes.Buffer
-	err := Execute(input, InputFormatTSV, &output, OutputFormatTSV)
+	err := ProcessStream(input, InputFormatTSV, &output, OutputFormatTSV)
 	if err != nil {
 		t.Fatalf("Execute failed: %v", err)
 	}
@@ -104,13 +104,23 @@ func TestExecute_Miller(t *testing.T) {
 
 			input := strings.NewReader(string(inputData))
 			var output bytes.Buffer
-			err = Execute(input, InputFormatCSV, &output, OutputFormatCSV, tt.opts...)
+			err = ProcessStream(input, InputFormatCSV, &output, OutputFormatCSV, tt.opts...)
 			if err != nil {
 				t.Fatalf("Execute failed: %v", err)
 			}
 
 			if output.String() != string(expectedData) {
 				t.Errorf("Output mismatch:\nGot:\n%s\nExpected:\n%s", output.String(), string(expectedData))
+			}
+
+			var output2 bytes.Buffer
+			err = ProcessFile(tt.inputPath, InputFormatCSV, &output2, OutputFormatCSV, tt.opts...)
+			if err != nil {
+				t.Fatalf("Execute failed: %v", err)
+			}
+
+			if output2.String() != string(expectedData) {
+				t.Errorf("Output mismatch:\nGot:\n%s\nExpected:\n%s", output2.String(), string(expectedData))
 			}
 		})
 	}

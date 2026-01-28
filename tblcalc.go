@@ -60,19 +60,18 @@ type tblcalcParams struct {
 	ignoreExit bool
 }
 
-// Options is functional options type
+// Options is a functional options type.
 type Options []funcopt.Option[tblcalcParams]
 
 var WithIgnoreExit = funcopt.New(func(params *tblcalcParams, ignoreExit bool) {
 	params.ignoreExit = ignoreExit
 })
 
-// Execute reads data from reader, applies table formulas found in comment lines,
-// and writes the result to writer. Comment lines starting with "# +TBLFM:" contain
-// formulas that are applied to the table data. The input and output formats are
-// specified by inputFormat and outputFormat parameters.
-func Execute(
-	reader io.Reader,
+// process is an internal function that handles both file and stream processing.
+// If nullableReader is nil, it reads from filepath; otherwise it reads from the reader.
+func process(
+	filepath string,
+	nullableReader io.Reader,
 	inputFormat InputFormat,
 	writer io.Writer,
 	outputFormat OutputFormat,
@@ -80,12 +79,19 @@ func Execute(
 ) (
 	err error,
 ) {
-	params := tblcalcParams{
-		ignoreExit: false,
-	}
+	params := tblcalcParams{}
 	err = funcopt.Apply(&params, opts)
 	if err != nil {
 		return
+	}
+	reader := nullableReader
+	if reader == nil {
+		inFile, err2 := os.Open(filepath)
+		if err2 != nil {
+			return fmt.Errorf("failed to open input file: %s Error: %v", filepath, err2)
+		}
+		defer (func() { Must(inFile.Close()) })()
+		reader = inFile
 	}
 	var formulas []string
 	var scripts []string
@@ -111,7 +117,7 @@ func Execute(
 			scripts = append(scripts, script)
 		}
 	}
-	// Reconstruct reader with this line and remaining content
+	// Reconstruct reader with comment block and remaining content
 	reader = io.MultiReader(
 		strings.NewReader(commentBlock.String()),
 		bufReader,
@@ -119,9 +125,51 @@ func Execute(
 	if len(formulas) > 0 {
 		return processWithTBLFMLib(reader, inputFormat, writer, outputFormat, formulas, params.ignoreExit)
 	} else if len(scripts) > 0 {
-		return processWithMlr(reader, inputFormat, writer, outputFormat, scripts, params.ignoreExit)
+		// If input-stream is passed, write it to temporary file and pass to library function.
+		if nullableReader != nil {
+			inFile, err := os.CreateTemp("", "tblcalc-*")
+			if err != nil {
+				return fmt.Errorf("failed to create temp file: %w", err)
+			}
+			defer (func() {
+				Ignore(inFile.Close())
+				Ignore(os.Remove(inFile.Name()))
+			})()
+			Must(io.Copy(inFile, reader))
+			Must(inFile.Close())
+			filepath = inFile.Name()
+		}
+		return processWithMlr(filepath, inputFormat, writer, outputFormat, scripts, params.ignoreExit)
 	}
-	return nil
+	return
+}
+
+// ProcessStream reads data from reader, applies table formulas found in comment lines,
+// and writes the result to writer. Comment lines starting with "# +TBLFM:" contain
+// formulas that are applied to the table data. The input and output formats are
+// specified by inputFormat and outputFormat parameters.
+func ProcessStream(
+	reader io.Reader,
+	inputFormat InputFormat,
+	writer io.Writer,
+	outputFormat OutputFormat,
+	opts ...funcopt.Option[tblcalcParams],
+) error {
+	return process("", reader, inputFormat, writer, outputFormat, opts...)
+}
+
+// ProcessFile reads data from filepath, applies table formulas found in comment lines,
+// and writes the result to writer. Comment lines starting with "# +TBLFM:" contain
+// formulas that are applied to the table data. The input and output formats are
+// specified by inputFormat and outputFormat parameters.
+func ProcessFile(
+	filepath string,
+	inputFormat InputFormat,
+	writer io.Writer,
+	outputFormat OutputFormat,
+	opts ...funcopt.Option[tblcalcParams],
+) error {
+	return process(filepath, nil, inputFormat, writer, outputFormat, opts...)
 }
 
 func csvRecordsSeq(
@@ -280,7 +328,7 @@ func writeTSV(writer io.Writer, table [][]string, commentLines map[int]string) e
 }
 
 func processWithMlr(
-	reader io.Reader,
+	inPath string,
 	inputFormat InputFormat,
 	writer io.Writer,
 	outputFormat OutputFormat,
@@ -289,26 +337,6 @@ func processWithMlr(
 ) (
 	err error,
 ) {
-	// Create a temporary file for Miller processing
-	tempFile, err := os.CreateTemp("", "tblcalc-*.csv")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	tempPath := tempFile.Name()
-	defer (func() {
-		Ignore(tempFile.Close())
-		Ignore(os.Remove(tempPath))
-	})()
-
-	// Write input to temp file
-	if _, err = io.Copy(tempFile, reader); err != nil {
-		tempFile.Close()
-		return fmt.Errorf("failed to write to temp file: %w", err)
-	}
-	if err = tempFile.Close(); err != nil {
-		return fmt.Errorf("failed to close temp file: %w", err)
-	}
-
 	// Determine format strings for Miller
 	var inFmt, outFmt string
 	switch inputFormat {
@@ -323,7 +351,6 @@ func processWithMlr(
 	case OutputFormatTSV:
 		outFmt = "tsv"
 	}
-
 	// Run Miller for each script
 	var mlrScripts []string
 	for _, script := range scripts {
@@ -345,18 +372,15 @@ func processWithMlr(
 		Ignore(os.Remove(resultFile.Name()))
 	})()
 	if len(mlrScripts) > 0 {
-		err = mlr.Put([]string{tempPath}, mlrScripts, true, inFmt, outFmt, resultFile)
+		err = mlr.Put([]string{inPath}, mlrScripts, true, inFmt, outFmt, resultFile)
 		if err != nil {
 			return
 		}
 	}
 	Must(resultFile.Close())
-
-	result := Value(os.Open(resultFile.Name()))
-
-	if _, err = io.Copy(writer, result); err != nil {
+	resultFile = Value(os.Open(resultFile.Name()))
+	if _, err = io.Copy(writer, resultFile); err != nil {
 		return fmt.Errorf("failed to write output: %w", err)
 	}
-
-	return nil
+	return
 }
