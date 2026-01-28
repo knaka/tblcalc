@@ -27,10 +27,10 @@ func InplacePutMarkdown(filePath string, script string) {
 	mlrentry.Main()
 }
 
-// InplacePut runs Miller with the specified file and scripts.
+// Put runs Miller with the specified file and scripts.
 // filePath is the path to the input file. Miller, as a library, does not support processing data in memory.
 // hasHeader indicates whether the first row should be treated as a header.
-func InplacePut(filePath string, scripts []string, hasHeader bool, inputFormat, outputFormat string) {
+func Put(filePath string, scripts []string, hasHeader bool, inputFormat, outputFormat string, writer *os.File) {
 	argsSave := os.Args
 	defer func() { os.Args = argsSave }()
 	args := []string{
@@ -46,7 +46,7 @@ func InplacePut(filePath string, scripts []string, hasHeader bool, inputFormat, 
 	}
 	args = append(args,
 		// In-place mode - Miller Documentation https://miller.readthedocs.io/en/latest/reference-main-in-place-processing/
-		"-I",
+		// "-I",
 		// List of verbs - Miller Documentation https://miller.readthedocs.io/en/latest/reference-verbs/#put
 		"put",
 	)
@@ -56,6 +56,9 @@ func InplacePut(filePath string, scripts []string, hasHeader bool, inputFormat, 
 	args = append(args,
 		filePath,
 	)
+	stdoutSaved := os.Stdout
+	os.Stdout = writer
 	os.Args = args
 	mlrentry.Main()
+	os.Stdout = stdoutSaved
 }

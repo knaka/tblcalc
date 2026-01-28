@@ -295,7 +295,10 @@ func processWithMlr(
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 	tempPath := tempFile.Name()
-	defer (func() { Must(os.Remove(tempPath)) })()
+	defer (func() {
+		Ignore(tempFile.Close())
+		Ignore(os.Remove(tempPath))
+	})()
 
 	// Write input to temp file
 	if _, err = io.Copy(tempFile, reader); err != nil {
@@ -333,18 +336,22 @@ func processWithMlr(
 		}
 		mlrScripts = append(mlrScripts, script)
 	}
-	if len(mlrScripts) > 0 {
-		mlr.InplacePut(tempPath, mlrScripts, true, inFmt, outFmt)
-	}
-
-	// Read result and write to output
-	resultFile, err := os.Open(tempPath)
+	resultFile, err := os.CreateTemp("", "tblcalc-*.csv")
 	if err != nil {
-		return fmt.Errorf("failed to open result file: %w", err)
+		return fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer (func() { Must(resultFile.Close()) })()
+	defer (func() {
+		Ignore(resultFile.Close())
+		Ignore(os.Remove(resultFile.Name()))
+	})()
+	if len(mlrScripts) > 0 {
+		mlr.Put(tempPath, mlrScripts, true, inFmt, outFmt, resultFile)
+	}
+	Must(resultFile.Close())
 
-	if _, err = io.Copy(writer, resultFile); err != nil {
+	result := Value(os.Open(resultFile.Name()))
+
+	if _, err = io.Copy(writer, result); err != nil {
 		return fmt.Errorf("failed to write output: %w", err)
 	}
 
