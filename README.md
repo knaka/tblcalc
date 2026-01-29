@@ -234,11 +234,15 @@ Add this to your `.vscode/settings.json`:
   "emeraldwalk.runonsave": {
     "commands": [
       {
-        "match": "\\.(csv|tsv)$",
+        "match": "\\.csv$",
         "cmd": "tblcalc -i ${file}"
-      }
-    ]
-  }
+      },
+      {
+        "match": "\\.tsv$",
+        "cmd": "tblcalc -i ${file}"
+      },
+    ],
+  },
 }
 ```
 
