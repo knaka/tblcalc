@@ -1,5 +1,10 @@
 # tblcalc(1) - Table Calculator
 
+[![https://pkg.go.dev/github.com/knaka/tblcalc](https://pkg.go.dev/badge/github.com/knaka/tblcalc.svg)](https://pkg.go.dev/github.com/knaka/tblcalc)
+[![Actions: Result](https://github.com/knaka/tblcalc/actions/workflows/test.yml/badge.svg)](https://github.com/knaka/tblcalc/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![https://goreportcard.com/report/github.com/knaka/tblcalc](https://goreportcard.com/badge/github.com/knaka/tblcalc)](https://goreportcard.com/report/github.com/knaka/tblcalc)
+
 ## Core Functionality
 
 tblcalc is a table calculation tool that applies formulas to CSV/TSV tables. Formulas can be embedded in the data file using special comment directives (e.g., `#+TBLFM:`) or placed in external files that are automatically discovered based on the data file's name. This functionality is inspired by Emacs Org-mode's table formulas and Miller scripts.
