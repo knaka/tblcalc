@@ -2,7 +2,7 @@
 
 [![https://pkg.go.dev/github.com/knaka/tblcalc](https://pkg.go.dev/badge/github.com/knaka/tblcalc.svg)](https://pkg.go.dev/github.com/knaka/tblcalc)
 [![Actions: Result](https://github.com/knaka/tblcalc/actions/workflows/test.yml/badge.svg)](https://github.com/knaka/tblcalc/actions/workflows/test.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![https://goreportcard.com/report/github.com/knaka/tblcalc](https://goreportcard.com/badge/github.com/knaka/tblcalc)](https://goreportcard.com/report/github.com/knaka/tblcalc)
 
 ## Core Functionality
