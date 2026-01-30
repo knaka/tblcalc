@@ -145,7 +145,7 @@ func process(
 			}
 			defer (func() {
 				Ignore(inFile.Close())
-				Ignore(os.Remove(inFile.Name()))
+				Must(os.Remove(inFile.Name()))
 			})()
 			Must(io.Copy(inFile, reader))
 			Must(inFile.Close())
