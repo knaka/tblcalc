@@ -6,7 +6,7 @@
 #MISE description="Run cmd."
 
 set -- "$PWD" "${0%/*}" "$@"; if test "$2" != "$0"; then cd "$2" 2>/dev/null || :; fi
-. ./.lib.sh
+. ./utils.libsh
   init_temp_dir
 cd "$1"; shift 2
 
