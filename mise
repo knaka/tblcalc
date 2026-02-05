@@ -1,0 +1,30 @@
+#!/usr/bin/env sh
+# vim: set filetype=sh tabstop=2 shiftwidth=2 expandtab :
+# shellcheck shell=sh
+"${sourced_eba2d9a-false}" && return 0; sourced_eba2d9a=true
+
+# jdx/mise: dev tools, env vars, task runner https://github.com/jdx/mise
+
+# Releases · jdx/mise https://github.com/jdx/mise/releases
+ver="2026.1.12"
+
+dir="$HOME/.cache/task-sh/mise@$ver"
+mkdir -p "$dir"
+cmd_path="$dir"/mise
+if ! test -x "$cmd_path"
+then
+  case "$(uname -s)" in
+    (Linux) os=linux;;
+    (Darwin) os=macos;;
+    (*) echo e4454ba >&2; exit;;
+  esac
+  case "$(uname -m)" in
+    (x86_64) arch=x64;;
+    (arm64) arch=arm64;;
+    (*) echo 65aa9c9 >&2; exit;;
+  esac
+  url="https://github.com/jdx/mise/releases/download/v${ver}/mise-v${ver}-${os}-${arch}"
+  curl --fail --location "$url" --output "$cmd_path"
+  chmod 755 "$cmd_path"
+fi
+exec "$cmd_path" "$@"

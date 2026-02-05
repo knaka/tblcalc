@@ -1,0 +1,32 @@
+[settings]
+
+# experimental = true
+# lockfile = true # experimental
+
+use_file_shell_for_executable_tasks = true
+windows_executable_extensions = [ "sh", "ps1", "py" ]
+unix_default_file_shell_args = "env"
+unix_default_inline_shell_args = "sh -c -o errexit"
+windows_default_file_shell_args = "env.exe"
+windows_default_inline_shell_args = "sh.exe -c -o errexit"
+
+[tools]
+go = "1.24"
+golangci-lint = "latest"
+"github:knaka/mdpp" = "latest"
+
+[tasks.go]
+description = "Run Go."
+run = "go"
+
+[tasks.lint]
+description = "Lint."
+run = 'golangci-lint run'
+
+[tasks.test]
+description = "Run tests."
+run = 'f() { test $# == 0 && set -- ./...; go test "$@"; }; f'
+
+[tasks.doc]
+description = "Update documentation files."
+run = 'mdpp --in-place --allow-remote DEVELOPMENT.md CLAUDE.md'

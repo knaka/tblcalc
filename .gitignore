@@ -21,3 +21,4 @@ tmp/
 __debug_*
 # Added by goreleaser init:
 dist/
+/build
