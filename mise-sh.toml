@@ -1,3 +1,246 @@
+# Add this file and shell script directory with wildcard to `includes` directive array.
+# 
+#   [task_config]
+#   includes = [
+#     "mise-tasks",
+#     "mise-sh.toml",
+#     "mise-sh/*.toml",
+#   ]
+
+["task-sh:install"]
+description = '[<name>...] Install task-sh files. If no name is specified, lists available files.'
+run = '''
+#!/usr/bin/env sh -o nounset -o errexit
+
+TASKS_DIR="$MISE_PROJECT_ROOT"/"${MISE_SH_TASKS_DIR-./mise-sh/}"
+
+TEMP_DIR="$(mktemp -d)"
+# shellcheck disable=SC2064
+trap "rm -fr '$TEMP_DIR'" EXIT
+
+VERBOSE=true
+
+# Guard against multiple calls. $1 is a unique ID
+first_call() {
+  eval "\${called_$1-false}" && return 1
+  eval "called_$1=true"
+}
+
+github_prepare_token() {
+  first_call b1929c9 || return 0
+  if test "${GITHUB_TOKEN+set}" = set
+  then
+    echo "Using existing \$GITHUB_TOKEN environment variable." >&2
+    return 0
+  fi
+  if command -v gh >/dev/null
+  then
+    if gh auth status >/dev/null
+    then
+      echo "Using GitHub token gh(1) provides." >&2
+      GITHUB_TOKEN="$(gh auth token)"
+      return 0
+    fi
+  fi
+  echo "Accessing GitHub API with anonymous access." >&2
+}
+
+github_api_request() {
+  local url="$1"
+  github_prepare_token
+  set -- \
+    --silent \
+    --header "X-GitHub-Api-Version: 2022-11-28" \
+    --header "Accept: application/vnd.github+json" \
+    --fail
+  if test "${GITHUB_TOKEN+set}" = set
+  then
+    set -- "$@" --header "Authorization: Bearer $GITHUB_TOKEN"
+  fi
+  "$VERBOSE" && echo "Accessing GitHub API: $url" >&2
+  curl "$@" "$url"
+}
+
+github_tree_get() {
+  local owner=
+  local repos=
+  local tree_sha=main
+  OPTIND=1; while getopts _-: OPT
+  do
+    test "$OPT" = - && OPT="${OPTARG%%=*}" && OPTARG="${OPTARG#"$OPT"=}"
+    case "$OPT" in
+      (owner) owner="$OPTARG";;
+      (repos) repos="$OPTARG";;
+      (branch|tag|tree|tree-sha) tree_sha="$OPTARG";;
+      (*) echo "Unexpected option: $OPT" >&2; exit 1;;
+    esac
+  done
+  shift $((OPTIND-1))
+
+  # REST API endpoints for Git trees - GitHub Docs https://docs.github.com/en/rest/git/trees
+  local url
+  url="$(printf "https://api.github.com/repos/%s/%s/git/trees/%s" "$owner" "$repos" "$tree_sha")"
+  github_api_request "$url"
+}
+
+# Fetch raw content of a file from a GitHub repository
+# Usage: github_raw_fetch [OPTIONS]
+# Options:
+#   --owner=OWNER         GitHub repository owner/organization
+#   --repos=REPOS         GitHub repository name
+#   --tree-sha=SHA        Tree SHA, branch name, or tag name (default: main). Aliases: --branch, --tag, --tree
+#   --path=PATH           Path to the file within the repository
+github_raw_fetch() {
+  local owner=
+  local repos=
+  local tree_sha=main
+  local path=
+  OPTIND=1; while getopts _-: OPT
+  do
+    test "$OPT" = - && OPT="${OPTARG%%=*}" && OPTARG="${OPTARG#"$OPT"=}"
+    case "$OPT" in
+      (owner) owner="$OPTARG";;
+      (repos) repos="$OPTARG";;
+      (branch|tag|tree|tree-sha) tree_sha="$OPTARG";;
+      (path) path="$OPTARG";;
+      (*) echo "Unexpected option: $OPT" >&2; exit 1;;
+    esac
+  done
+  shift $((OPTIND-1))
+
+  path="${path#/}"
+  local url
+  url="$(printf "https://raw.githubusercontent.com/%s/%s/%s/%s" "$owner" "$repos" "$tree_sha" "$path")"
+  curl --fail --silent "$url"
+}
+
+state_path="$MISE_PROJECT_ROOT/.task-sh-state.json"
+
+# [<name>...] Install task-sh files. If no name is specified, lists available files.
+install() {
+  local force=false
+  if test "$#" -gt 0 && test "$1" = "--force"
+  then
+    shift
+    force=true
+  fi
+  local rc=0
+  local resp
+  local main_branch=main
+  resp="$(github_tree_get --owner="knaka" --repos="task-sh")"
+  local latest_commit; latest_commit="$(printf "%s" "$resp" | jq -r .sha)"
+  "$VERBOSE" && echo "Latest commit of \"$main_branch\" is \"$latest_commit\"." >&2
+  if test $# = 0
+  then
+    echo "Available files:" >&2
+    echo "$resp" \
+    | jq -r '.tree[] | .path' \
+    | grep -e '^[^._].*\.lib\.sh$' \
+    | sed -e 's/^/  /'
+    return
+  fi
+  if ! test -r "$state_path"
+  then
+    echo '{}' >"$state_path"
+  fi
+  local file
+  local name
+  for file in "$@"
+  do
+    name="${file##*/}"
+    "$VERBOSE" && echo "Name: \"$name\"."
+    local indent="  "
+    local node mode last_sha
+    local last_sha=
+    last_sha="$(jq -r --arg name "$name" '.last_sha[$name] // ""' "$state_path")"
+    "$VERBOSE" && echo "${indent}Last installed SHA:" "$last_sha"
+    local local_sha=
+    if test -r "$file"
+    then
+      local_sha="$(git hash-object "$file")"
+    fi
+    "$VERBOSE" && echo "${indent}Local SHA:" "$local_sha"
+    if test -n "$last_sha" -a -n "$local_sha" -a "$last_sha" != "$local_sha"
+    then
+      echo "\"$name\" is modified locally." >&2
+      rc=1
+      continue
+    fi
+    if test "$file" = "$name"
+    then
+      case "$file" in
+        (*/*) ;;
+        (*) file="$TASKS_DIR"/"$name"
+      esac
+    fi
+    node="$(echo "$resp" | jq -c --arg name "$name" '.tree[] | select(.path == $name)')"
+    if test -z "$node"
+    then
+      echo "\"$name\" does not exist in the remote repository."
+      rc=1
+      continue
+    fi
+    local new_sha
+    new_sha="$(echo "$node" | jq -r .sha)"
+    "$VERBOSE" && echo "${indent}Remote SHA:" "$new_sha" >&2
+    if ! "$force" && test -n "$local_sha" -a "$new_sha" = "$last_sha"
+    then
+      echo "\"$name\" is up to date. Skipping." >&2
+      continue
+    fi
+    # shellcheck disable=SC2059
+    printf "Downloading \"$name\" ... " >&2
+    if test "$name" = "task.sh"
+    then
+      "$VERBOSE" && echo "Lazily replacing \"$file.new\" with \"$file\"." >&2
+      chaintrap "mv \"$file.new\" \"$file\"" EXIT
+      local file="$file.new"
+    fi
+    github_raw_fetch --owner="knaka" --repos="task-sh" --tree-sha="$latest_commit" --path=/"$name" >"$file"
+    echo "done." >&2
+    local temp_json="$TEMP_DIR"/1caef61.json
+    jq --arg name "$name" --arg sha "$new_sha" '.last_sha[$name] = $sha' "$state_path" >"$temp_json"
+    cat "$temp_json" >"$state_path"
+    mode="$(echo "$node" | jq -r .mode)"
+    "$VERBOSE" && echo "  Mode:" "$mode"
+    chmod "${mode#???}" "$file"
+  done
+  return "$rc"
+}
+
+install "$@"
+'''
+
+["task-sh:update"]
+description = "Update task-sh files."
+run = '''
+#!/usr/bin/env sh -o nounset -o errexit
+
+TASKS_DIR="$MISE_PROJECT_ROOT"/mise-sh
+
+update() {
+  local file
+  local excludes=":"
+  for file in "$TASKS_DIR"/project*.lib.sh "$TASKS_DIR"/prj*.lib.sh
+  do
+    test -e "$file" || continue
+    excludes="$excludes:$file:"
+  done
+  set --
+  for file in "$TASKS_DIR"/*.lib.sh "$TASKS_DIR"/task.sh
+  do
+    test -r "$file" || continue
+    case "$excludes" in
+      (*:$file:*) continue;;
+    esac
+    set -- "$@" "$file"
+  done
+  mise run task-sh:install "$MISE_PROJECT_ROOT"/mise "$MISE_PROJECT_ROOT"/mise.cmd "$@"
+}
+
+update "$@"
+'''
+
 ["task-sh:gen"]
 description = "Generate task-sh interface tasks."
 usage = '''

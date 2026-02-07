@@ -7,6 +7,9 @@ unix_default_inline_shell_args = "sh -c -o errexit"
 windows_default_file_shell_args = "env.exe"
 windows_default_inline_shell_args = "sh.exe -c -o errexit"
 
+[env]
+MISE_SH_TASKS_DIR = "./mise-sh/"
+
 [tools]
 go = "1.24"
 golangci-lint = "latest"
