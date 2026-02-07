@@ -1,0 +1,144 @@
+["task-sh:gen"]
+description = "Generate task-sh interface tasks."
+usage = '''
+flag "--sh-tasks-dir <dir>" {
+  help "Shell tasks directory path"
+  default "./mise-sh/"
+  env "MISE_SH_TASKS_DIR"
+}
+'''
+tools = {"jq" = "1.8", "yj" = "5"}
+run = '''
+#!/usr/bin/env sh -o nounset -o errexit
+
+mise_sh_tasks_dir="$usage_sh_tasks_dir"
+
+# Parse shell task files and extract task/subcmd information with their metadata.
+# Outputs lines in format: "<type> <name> <func_name> <basename> <body>"
+extract_task_info() {
+  awk -f - "$@" <<'EOF'
+BEGIN {
+  desc = ""
+  mise_hdrs_count = 0
+}
+/^#MISE / || /^# *\[MISE\] / {
+  line = $0
+  gsub(/^#MISE +/, "", line)
+  gsub(/^# *\[MISE\] +/, "", line)
+  mise_hdrs[mise_hdrs_count++] = line
+  next
+}
+/^#/ {
+  if (desc == "") {
+    line = $0
+    gsub(/^#+[ ]*/, "", line)
+    desc = line
+  }
+  next
+}
+/^(task_|subcmd_)[[:alnum:]_]()/ {
+  func_name = $1
+  sub(/\(\).*$/, "", func_name)
+  type = func_name
+  sub(/_.*$/, "", type)
+  name = func_name
+  sub(/^[^_]+_/, "", name)
+  gsub(/__/, ":", name)
+  base = FILENAME
+  sub(/^.*\//, "", base)
+  print type " " name " " func_name " " base " " desc
+  for (i = 0; i < mise_hdrs_count; i++) {
+    type = "mise"
+    print type " " name " " func_name " " base " " mise_hdrs[i]
+  }
+  desc = ""
+  delete mise_hdrs
+  mise_hdrs_count = 0
+  next
+}
+{
+  desc = ""
+  delete mise_hdrs
+  mise_hdrs_count = 0
+}
+END {
+  print "nop - - - -"
+}
+EOF
+}
+
+# Generate the shell script that will be executed when a Mise task is invoked.
+# The script changes to the mise-sh directory, sources the library file,
+# then returns to the original directory and calls the task function.
+gen_script() {
+  cat <<EOF
+#!/usr/bin/env sh
+
+set -- "\$PWD" "\$@"
+cd "\$MISE_PROJECT_ROOT"/"$mise_sh_tasks_dir"
+. "$base"
+cd "\$1"
+shift
+"$1" "\$@"
+EOF
+}
+
+# Read task info from stdin and generate TOML files for each source file.
+# Groups tasks by their source basename and outputs gen-<basename>.toml files.
+# Handles "task"/"subcmd" types by setting description and run script,
+# and "mise" type by merging additional mise configuration headers.
+generate_task_tomls() {
+  local task="{}"
+  local base_prev=
+  local type name func_name base body
+  while read -r type name func_name base body
+  do
+    if test "$base" != "$base_prev"
+    then
+      if jq -n --argjson input "$task" --exit-status \
+        '$input | length > 0' >/dev/null
+      then
+        printf "%s" "$task" | yj -jt >"gen-$base_prev.toml"
+      fi
+      task="{}"
+    fi
+    case "$type" in
+      (task|subcmd)
+        task="$(
+          jq -n --argjson input "$task" \
+            --arg name "$name" \
+            --arg desc "$body" \
+            '$input | .[$name]["description"] = $desc'
+        )"
+        task="$(
+          jq -n --argjson input "$task" \
+            --arg name "$name" \
+            --arg script "$(gen_script "$func_name")" \
+            '$input | .[$name]["run"] = $script')"
+        ;;
+      (mise)
+        local mise_header="$(printf "%s" "$body" | yj -tj)"
+        task="$(
+          jq -n --argjson input "$task" \
+            --arg name "$name" \
+            --argjson mise_header "$mise_header" \
+            '$input | .[$name] += $mise_header')"
+        ;;
+      (nop)
+        ;;
+      (*)
+        exit 1
+    esac
+    base_prev="$base"
+  done
+}
+
+if ! test -d "$MISE_PROJECT_ROOT"/"$mise_sh_tasks_dir"
+then
+  echo "Mise shell tasks directory \"$MISE_PROJECT_ROOT/$mise_sh_tasks_dir\" does not exist." >&2
+  exit 1
+fi
+cd "$MISE_PROJECT_ROOT"/"$mise_sh_tasks_dir"
+rm -f gen-*.toml
+extract_task_info *.lib.sh | generate_task_tomls
+'''

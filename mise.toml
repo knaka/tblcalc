@@ -1,8 +1,5 @@
 [settings]
 
-# experimental = true
-# lockfile = true # experimental
-
 use_file_shell_for_executable_tasks = true
 windows_executable_extensions = [ "sh", "ps1", "py" ]
 unix_default_file_shell_args = "env"
@@ -15,6 +12,19 @@ go = "1.24"
 golangci-lint = "latest"
 "github:knaka/mdpp" = "latest"
 
+[task_config]
+includes = [
+  "mise-tasks",
+  "mise-sh.toml",
+  "mise-sh/*.toml",
+]
+
+[tasks.gen]
+description = "Generate stuff."
+depends = [
+  "task-sh:gen",
+]
+
 [tasks.go]
 description = "Run Go."
 run = "go"
@@ -22,11 +32,3 @@ run = "go"
 [tasks.lint]
 description = "Lint."
 run = 'golangci-lint run'
-
-[tasks.test]
-description = "Run tests."
-run = 'f() { test $# == 0 && set -- ./...; go test "$@"; }; f'
-
-[tasks.doc]
-description = "Update documentation files."
-run = 'mdpp --in-place --allow-remote DEVELOPMENT.md CLAUDE.md'
