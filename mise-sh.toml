@@ -9,16 +9,17 @@
 
 ["task-sh:install"]
 description = '[<name>...] Install task-sh files. If no name is specified, lists available files.'
+tools = {"jq" = "1.8", "gh" = "2"}
 run = '''
 #!/usr/bin/env sh -o nounset -o errexit
 
-TASKS_DIR="$MISE_PROJECT_ROOT"/"${MISE_SH_TASKS_DIR-./mise-sh/}"
+tasks_dir="$MISE_PROJECT_ROOT"/"${MISE_SH_TASKS_DIR-./mise-sh/}"
 
-TEMP_DIR="$(mktemp -d)"
+temp_dir="$(mktemp -d)"
 # shellcheck disable=SC2064
-trap "rm -fr '$TEMP_DIR'" EXIT
+trap "rm -fr '$temp_dir'" EXIT
 
-VERBOSE=true
+verbose=true
 
 # Guard against multiple calls. $1 is a unique ID
 first_call() {
@@ -57,7 +58,7 @@ github_api_request() {
   then
     set -- "$@" --header "Authorization: Bearer $GITHUB_TOKEN"
   fi
-  "$VERBOSE" && echo "Accessing GitHub API: $url" >&2
+  "$verbose" && echo "Accessing GitHub API: $url" >&2
   curl "$@" "$url"
 }
 
@@ -129,7 +130,7 @@ install() {
   local main_branch=main
   resp="$(github_tree_get --owner="knaka" --repos="task-sh")"
   local latest_commit; latest_commit="$(printf "%s" "$resp" | jq -r .sha)"
-  "$VERBOSE" && echo "Latest commit of \"$main_branch\" is \"$latest_commit\"." >&2
+  "$verbose" && echo "Latest commit of \"$main_branch\" is \"$latest_commit\"." >&2
   if test $# = 0
   then
     echo "Available files:" >&2
@@ -148,18 +149,18 @@ install() {
   for file in "$@"
   do
     name="${file##*/}"
-    "$VERBOSE" && echo "Name: \"$name\"."
+    "$verbose" && echo "Name: \"$name\"."
     local indent="  "
     local node mode last_sha
     local last_sha=
     last_sha="$(jq -r --arg name "$name" '.last_sha[$name] // ""' "$state_path")"
-    "$VERBOSE" && echo "${indent}Last installed SHA:" "$last_sha"
+    "$verbose" && echo "${indent}Last installed SHA:" "$last_sha"
     local local_sha=
     if test -r "$file"
     then
       local_sha="$(git hash-object "$file")"
     fi
-    "$VERBOSE" && echo "${indent}Local SHA:" "$local_sha"
+    "$verbose" && echo "${indent}Local SHA:" "$local_sha"
     if test -n "$last_sha" -a -n "$local_sha" -a "$last_sha" != "$local_sha"
     then
       echo "\"$name\" is modified locally." >&2
@@ -170,7 +171,7 @@ install() {
     then
       case "$file" in
         (*/*) ;;
-        (*) file="$TASKS_DIR"/"$name"
+        (*) file="$tasks_dir"/"$name"
       esac
     fi
     node="$(echo "$resp" | jq -c --arg name "$name" '.tree[] | select(.path == $name)')"
@@ -182,7 +183,7 @@ install() {
     fi
     local new_sha
     new_sha="$(echo "$node" | jq -r .sha)"
-    "$VERBOSE" && echo "${indent}Remote SHA:" "$new_sha" >&2
+    "$verbose" && echo "${indent}Remote SHA:" "$new_sha" >&2
     if ! "$force" && test -n "$local_sha" -a "$new_sha" = "$last_sha"
     then
       echo "\"$name\" is up to date. Skipping." >&2
@@ -192,17 +193,17 @@ install() {
     printf "Downloading \"$name\" ... " >&2
     if test "$name" = "task.sh"
     then
-      "$VERBOSE" && echo "Lazily replacing \"$file.new\" with \"$file\"." >&2
+      "$verbose" && echo "Lazily replacing \"$file.new\" with \"$file\"." >&2
       chaintrap "mv \"$file.new\" \"$file\"" EXIT
       local file="$file.new"
     fi
     github_raw_fetch --owner="knaka" --repos="task-sh" --tree-sha="$latest_commit" --path=/"$name" >"$file"
     echo "done." >&2
-    local temp_json="$TEMP_DIR"/1caef61.json
+    local temp_json="$temp_dir"/1caef61.json
     jq --arg name "$name" --arg sha "$new_sha" '.last_sha[$name] = $sha' "$state_path" >"$temp_json"
     cat "$temp_json" >"$state_path"
     mode="$(echo "$node" | jq -r .mode)"
-    "$VERBOSE" && echo "  Mode:" "$mode"
+    "$verbose" && echo "  Mode:" "$mode"
     chmod "${mode#???}" "$file"
   done
   return "$rc"
@@ -216,18 +217,18 @@ description = "Update task-sh files."
 run = '''
 #!/usr/bin/env sh -o nounset -o errexit
 
-TASKS_DIR="$MISE_PROJECT_ROOT"/mise-sh
+tasks_dir="$MISE_PROJECT_ROOT"/mise-sh
 
 update() {
   local file
   local excludes=":"
-  for file in "$TASKS_DIR"/project*.lib.sh "$TASKS_DIR"/prj*.lib.sh
+  for file in "$tasks_dir"/project*.lib.sh "$tasks_dir"/prj*.lib.sh
   do
     test -e "$file" || continue
     excludes="$excludes:$file:"
   done
   set --
-  for file in "$TASKS_DIR"/*.lib.sh "$TASKS_DIR"/task.sh
+  for file in "$tasks_dir"/*.lib.sh "$tasks_dir"/task.sh
   do
     test -r "$file" || continue
     case "$excludes" in
@@ -235,7 +236,11 @@ update() {
     esac
     set -- "$@" "$file"
   done
-  mise run task-sh:install "$MISE_PROJECT_ROOT"/mise "$MISE_PROJECT_ROOT"/mise.cmd "$@"
+  mise run task-sh:install \
+    "$MISE_PROJECT_ROOT"/mise \
+    "$MISE_PROJECT_ROOT"/mise.cmd \
+    "$MISE_PROJECT_ROOT"/mise-sh.toml \
+    "$@"
 }
 
 update "$@"
