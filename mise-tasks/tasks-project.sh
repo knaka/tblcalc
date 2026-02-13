@@ -31,3 +31,8 @@ task_doc() {
     CLAUDE.md \
     #nop
 }
+
+# Run go cmd.
+task_go() {
+  go "$@"
+}
