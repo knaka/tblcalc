@@ -1,20 +1,41 @@
 # vim: set filetype=sh tabstop=2 shiftwidth=2 expandtab :
 # shellcheck shell=sh
-"${sourced_e8fb65d-false}" && return 0; sourced_e8fb65d=true
+"${sourced_f5f648c-false}" && return 0; sourced_f5f648c=true
 
 # ==========================================================================
-#region Environment variables. If not set by the caller, they are set later in `tasksh_main`
+#region Environment variables.
 
-# The original working directory when the script was started.
-: "${ORIGINAL_CWD=}"
-: "${ORIGINAL_CWD:=${MISE_ORIGINAL_CWD:-}}"
-: "${ORIGINAL_CWD:=$PWD}"
+# The initial working directory when the command was started.
+: "${INITIAL_DIR=}"
+: "${INITIAL_DIR:=${MISE_ORIGINAL_CWD:-}}" # https://mise.jdx.dev/tasks/toml-tasks.html
+: "${INITIAL_DIR:=${INIT_CWD:-}}" # https://docs.npmjs.com/cli/v8/using-npm/scripts
+: "${INITIAL_DIR:=$PWD}"
 # Aliases
-: "${ORIGINAL_PWD:=${ORIGINAL_CWD}}"
-: "${INITIAL_PWD:=${ORIGINAL_CWD}}"
+: "${ORIGINAL_CWD:=${INITIAL_DIR}}"
+: "${ORIGINAL_PWD:=${INITIAL_DIR}}"
+: "${INITIAL_PWD:=${INITIAL_DIR}}"
+
+# Current project directory.
+: "${PROJECT_DIR=}"
+: "${PROJECT_DIR:=${MISE_PROJECT_ROOT:-}}"
+
+# The project directory where the task is defined.
+: "${TASK_PROJECT_DIR=}"
+: "${TASK_PROJECT_DIR:=${MISE_CONFIG_ROOT:-}}"
+
+# Cache directory path for the task runner
+: "${CACHE_DIR:=$HOME/.cache/task-sh}"
+mkdir -p "$CACHE_DIR"
 
 # For platforms other than Windows
 : "${LOCALAPPDATA:=/}"
+
+# Verbosity.
+: "${VERBOSE:=false}"
+
+# Current shell.
+: "${SH=}"
+: "${SH:=sh}"
 
 #endregion
 
@@ -28,7 +49,7 @@ register_temp_cleanup() {
   test "${TEMP_DIR+set}" = set && return 0
   TEMP_DIR="$(mktemp -d)"
   # shellcheck disable=SC2064
-  trap "rm -fr '$TEMP_DIR'" EXIT
+  trap 'rm -fr "$TEMP_DIR"' EXIT
 }
 
 # Create a temporary directory and assign $TEMP_DIR env var. Obsolete: use register_temp_cleanup instead.
@@ -297,6 +318,13 @@ readonly is="$us"
 # shellcheck disable=SC2034
 readonly is1="$us"
 
+# shellcheck disable=SC2034
+readonly newline_char="
+"
+
+# shellcheck disable=SC2034
+readonly tab_char="	"
+
 # Canonicalize path
 canon_path() {
   local target="$1"
@@ -350,7 +378,9 @@ glob_and_run() {
       (*) set -- "$@" "$arg" ;;
     esac
   done
-  command $cmd "$@"
+  pwd
+  echo command "$cmd".exe "$@"
+  command "$cmd".exe "$@"
 }
 
 # Wait for one or more servers to respond with HTTP 200. Checks each URL sequentially with a 60-second timeout per URL.
@@ -386,32 +416,123 @@ strip_escape_sequences() {
   sed -E -e 's/\[[0-9;]*[ABCDEFGHJKSTmin]//g'
 }
 
-# Absolute path to relative path
+# [<target> [source=$PWD]] Convert absolute path to relative path
 abs2rel() {
   local target="$1"
   shift
+  local drive=
+  if is_windows
+  then
+    case "$target" in
+      (*:*)
+        drive="${target%%:*}:"
+        target="${target#*:}"
+        ;;
+    esac
+  fi
   local source="$PWD"
   if test "$#" -gt 0
   then
     source="$1"
   fi
+  if is_windows
+  then
+    local source_drive
+    source_drive="${source%%:*}:"
+    if test -n "$drive" && ! test "$source_drive" = "$drive"
+    then
+      echo "$drive$target"
+      return 0
+    fi
+    source="${source#*:}"
+  fi
+
+  # Same path
+  if test "$target" = "$source"
+  then
+    echo "${drive}."
+    return 0
+  fi
+
+  # Ensure paths don't have trailing slashes (except root)
+  target="${target%/}"
+  source="${source%/}"
+  test -z "$target" && target="/"
+  test -z "$source" && source="/"
+
   local common="$source"
   local back=
-  while test "${target#"$common"}" = "${target}"
+
+  # Find common ancestor
+  while :
   do
-    common=$(dirname "$common")
+    # Check if target equals common
+    if test "$target" = "$common"
+    then
+      break
+    fi
+    # Check if target starts with common/ (or common is root)
+    if test "$common" = "/"
+    then
+      # Root is always a prefix of any absolute path
+      break
+    fi
+    case "$target" in
+      ("$common"/*)
+        break
+        ;;
+    esac
+    # Go up one directory
+    local parent
+    parent=$(dirname "$common")
+    if test "$parent" = "$common"
+    then
+      # Reached root
+      common="/"
+      back="../${back}"
+      break
+    fi
+    common="$parent"
     back="../${back}"
   done
-  echo "${back}""${target#"$common"/}"
+
+  # Build the relative path
+  if test "$target" = "$common"
+  then
+    # Target is an ancestor of source
+    if test -z "$back"
+    then
+      echo "${drive}."
+    else
+      echo "${drive}${back%/}"
+    fi
+  else
+    # Remove common prefix from target
+    local suffix
+    if test "$common" = "/"
+    then
+      suffix="${target#/}"
+    else
+      suffix="${target#"$common"/}"
+    fi
+    echo "${drive}${back}${suffix}"
+  fi
 }
 
 # shuf(1) for macOS environment.
 if ! command -v shuf >/dev/null 2>&1
 then
-  alias shuf='sort -R'
+  shuf() {
+    sort -R "$@"
+  }
 fi
 
-is_macos && alias sha1sum='shasum -a 1'
+if is_macos
+then
+  sha1sum() {
+    shasum -a 1 "$@"
+  }
+fi
 
 # Memoize the (mainly external) command output.
 memoize() {
@@ -666,7 +787,7 @@ get_key() {
   echo "$key"
 }
 
-# Show a message and get input from the user.
+# [<message> [default]] Show a message and get input from the user.
 prompt() {
   local message="${1:-Text}"
   local default="${2:-}"
@@ -680,7 +801,7 @@ prompt() {
   printf "%s" "$response"
 }
 
-# Print a message and get confirmation.
+# [<message> [default]] Print a message and get confirmation.
 prompt_confirm() {
   local message="${1:-Text}"
   local default="${2:-n}"
@@ -705,12 +826,13 @@ prompt_confirm() {
   then
     response="$default"
   fi
+  # Echoing.
   echo "$response" >&2
   case "$response" in
     (y|Y)
       return 0
       ;;
-    (n|N)
+    (*)
       return 1
       ;;
   esac
@@ -856,5 +978,242 @@ resubst() {
   done
   sed "$@"
 }
+
+#endregion
+
+# ==========================================================================
+#region Map (associative array) functions. "IFS-Separated Map"
+
+# Put a value in an associative array implemented as a property list.
+ifsm_put() {
+  local key="$2"
+  local value="$3"
+  # shellcheck disable=SC2086
+  set -- $1
+  # First char of IFS
+  local delim="${IFS%"${IFS#?}"}"
+  while test $# -gt 0
+  do
+    test "$1" != "$key" && printf "%s%s%s%s" "$1" "$delim" "$2" "$delim"
+    shift 2
+  done
+  printf "%s%s%s%s" "$key" "$delim" "$value" "$delim"
+}
+
+# Get a value from an associative array implemented as a property list.
+ifsm_get() {
+  local key="$2"
+  # shellcheck disable=SC2086
+  set -- $1
+  while test $# -gt 0
+  do
+    test "$1" = "$key" && printf "%s" "$2" && return 0
+    shift 2
+  done
+  return 1
+}
+
+# Keys of an associative array implemented as a property list.
+ifsm_keys() {
+  # shellcheck disable=SC2086
+  set -- $1
+  # First char of IFS
+  local delim="${IFS%"${IFS#?}"}"
+  while test $# -gt 0
+  do
+    printf "%s%s" "$1" "$delim"
+    shift 2
+  done
+}
+
+# Values of an associative array implemented as a property list.
+ifsm_values() {
+  # shellcheck disable=SC2086
+  set -- $1
+  # First char of IFS
+  local delim="${IFS%"${IFS#?}"}"
+  while test $# -gt 0
+  do
+    printf "%s%s" "$2" "$delim"
+    shift 2
+  done
+}
+
+#endregion
+
+# ==========================================================================
+#region Fetch and run a command from an archive
+
+# Canonicalize `uname -s` result
+uname_s() {
+  local os_name; os_name="$(uname -s)"
+  case "$os_name" in
+    (Windows_NT|MINGW*|CYGWIN*) os_name="Windows" ;;
+  esac
+  echo "$os_name"
+}
+
+map_os() {
+  ifsm_get "$1" "$(uname_s)"
+}
+
+map_arch() {
+  ifsm_get "$1" "$(uname -m)"
+}
+
+# Fetch and run a command from a remote archive
+# Usage: run_fetched_cmd [OPTIONS] -- [COMMAND_ARGS...]
+# Options:
+#   --name=NAME           Application name. Used as the directory name to store the command.
+#   --ver=VERSION         Application version
+#   --cmd=COMMAND         Command name to execute. If not specified, the application name is used.
+#   --ifs=IFS             IFS to split the os_map and arch_map options. Default: $IFS
+#   --os-map=MAP          OS name mapping (IFS-separated key-value pairs)
+#   --arch-map=MAP        Architecture name mapping (IFS-separated key-value pairs)
+#   --ext=EXTENSION       Archive file extension (e.g., ".zip", ".tar.gz"). Takes precedence over --ext-map.
+#   --ext-map=MAP         Archive extension mapping (IFS-separated key-value pairs). Used when --ext is not specified. If neither option is provided, the URL template points directly to a command binary rather than an archive file
+#   --url-template=TEMPLATE URL template string to generate the download URL with ${ver}, ${os}, ${arch}, ${ext}, ${exe_ext} (=.exe on Windows) variables
+#   --rel-dir-template=TEMPLATE   Relative path template within archive to the directory containing the command (default: ".")
+#   --print-dir           Print the directory path where the command is installed instead of executing the command
+#   --macos-remove-signature      Remove code signature from the downloaded binary on macOS to bypass security checks
+run_fetched_cmd() {
+  local name=
+  local ver=
+  local cmd=
+  local ifs=
+  local os_map=
+  local arch_map=
+  local ext=
+  local ext_map=
+  local url_template=
+  local rel_dir_template=.
+  local print_dir=false
+  local macos_remove_signature=false
+  OPTIND=1; while getopts _-: OPT
+  do
+    test "$OPT" = - && OPT="${OPTARG%%=*}" && OPTARG="${OPTARG#"$OPT"=}"
+    case "$OPT" in
+      (name) name=$OPTARG;;
+      (ver) ver=$OPTARG;;
+      (cmd) cmd=$OPTARG;;
+      (ifs) ifs=$OPTARG;;
+      (os-map) os_map=$OPTARG;;
+      (arch-map) arch_map=$OPTARG;;
+      (ext) ext=$OPTARG;;
+      (ext-map) ext_map=$OPTARG;;
+      (url-template) url_template=$OPTARG;;
+      (rel-dir-template) rel_dir_template=$OPTARG;;
+      (print-dir) print_dir=true;;
+      (macos-remove-signature) macos_remove_signature=true;;
+      (*) echo "Unexpected option: $OPT" >&2; exit 1;;
+    esac
+  done
+  shift $((OPTIND-1))
+
+  if test -z "$cmd"
+  then
+    cmd="$name"
+  fi
+  local app_dir_path="$CACHE_DIR"/"$name"@"$ver"
+  mkdir -p "$app_dir_path"
+  local cmd_path="$app_dir_path"/"$cmd""$exe_ext"
+  if ! command -v "$cmd_path" >/dev/null 2>&1
+  then
+    local ifs_saved=
+    if test -n "$ifs"
+    then
+      ifs_saved="$IFS"
+      IFS="$ifs"
+    fi
+    local ver="$ver"
+    local os
+    # shellcheck disable=SC2034
+    os="$(map_os "$os_map")" || return $?
+    local arch
+    # shellcheck disable=SC2034
+    arch="$(map_arch "$arch_map")" || return $?
+    if test -z "$ext" -a -n "$ext_map"
+    then
+      ext="$(map_os "$ext_map")"
+    fi
+    if test -n "$ifs_saved"
+    then
+      IFS="$ifs_saved"
+    fi
+    local url; url="$(eval echo "$url_template")" || return $?
+    init_temp_dir
+    local out_file_path="$TEMP_DIR"/"$name""$ext"
+    if ! curl --fail --location "$url" --output "$out_file_path"
+    then
+      echo "Failed to download: $url" >&2
+      return 1
+    fi
+    local work_dir_path="$TEMP_DIR"/"$name"ec85463
+    mkdir -p "$work_dir_path"
+    push_dir "$work_dir_path"
+    case "$ext" in
+      (.zip) unzip "$out_file_path" >&2 ;;
+      (.tar.gz) tar -xf "$out_file_path" >&2 ;;
+      (*) ;;
+    esac
+    pop_dir
+    if test -n "$ext"
+    then
+      local rel_dir_path; rel_dir_path="$(eval echo "$rel_dir_template")"
+      mv "$work_dir_path"/"$rel_dir_path"/* "$app_dir_path"
+    else
+      mv "$out_file_path" "$cmd_path"
+    fi
+    chmod +x "$cmd_path"
+    if is_macos && "$macos_remove_signature"
+    then
+      codesign --remove-signature "$cmd_path"
+    fi
+  fi
+  if "$print_dir"
+  then
+    echo "$app_dir_path"
+  else
+    PATH="$app_dir_path":$PATH invoke "$cmd_path" "$@"
+  fi
+}
+
+# Uname kernel name -> GOOS mapping
+# Installing Go from source - The Go Programming Language https://go.dev/doc/install/source#environment
+# shellcheck disable=SC2140
+# shellcheck disable=SC2034
+goos_map=\
+"Linux linux "\
+"Darwin darwin "\
+"Windows windows "\
+""
+
+# Uname kernel name -> GOOS in CamelCase mapping
+# shellcheck disable=SC2140
+# shellcheck disable=SC2034
+goos_camel_map=\
+"Linux Linux "\
+"Darwin Darwin "\
+"Windows Windows "\
+""
+
+# Uname architecture name -> GOARCH mapping
+# shellcheck disable=SC2140
+# shellcheck disable=SC2034
+goarch_map=\
+"x86_64 amd64 "\
+"arm64 arm64 "\
+"armv7l arm "\
+"i386 386 "\
+""
+
+# Uname kernel name -> generally used archive file extension mapping
+# shellcheck disable=SC2140
+# shellcheck disable=SC2034
+archive_ext_map=\
+"Linux .tar.gz "\
+"Darwin .tar.gz "\
+"Windows .zip "\
+""
 
 #endregion
