@@ -9,7 +9,7 @@ set -- _LIBDIR .lib "$@"
 shift 2
 cd "$1" || exit 1; shift 2
 
-#MISE description="Generate rounting tasks for monolithic task definition files."
+#MISE description="Generate routing scripts for tasks defined in monolithic shell files."
 #MISE tools={"jq"="1.8"}
 
 marker_93949c9="ed9038b1-9de5-40fd-bede-eabed9b60306"
@@ -31,7 +31,7 @@ gen_ba88d3d() {
   cat <<EOF
 #!/usr/bin/env sh
 
-# Code generated from "$base" by task:route task. DO NOT EDIT.
+# Code generated from "$base" by tasks:expand task. DO NOT EDIT.
 
 #${marker_93949c9}
 ${mise_header} description="$body"
@@ -82,7 +82,7 @@ generate_tasks() {
 }
 
 main() {
-  echo "Updating routing configuration files in project \"$PROJECT_DIR\"." >&2
+  echo "Expanding task definitions in project \"$PROJECT_DIR\"." >&2
   cd "$PROJECT_DIR"/mise-tasks || exit 1
   find . -type f -print0 \
   | xargs -0 grep -l "#${marker_93949c9}" \
