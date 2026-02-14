@@ -27,11 +27,11 @@ test_json2sh() {
   local actual="$TEMP_DIR/d06580e.sh"
   echo '{"user":{"name":"Alice","age":30},"items":["apple","banana"]}' | json2sh >"$actual"
 
-cat -n "$expected"
-cat "$expected" | od
+# cat -n "$expected"
+# cat "$expected" | od
 
-cat -n "$actual"
-cat "$actual" | od
+# cat -n "$actual"
+# cat "$actual" | od
 
   assert_eq -m "4a3762e" \
     "$(sha256sum "$expected" | field 1)" \

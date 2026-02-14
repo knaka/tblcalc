@@ -20,6 +20,11 @@ test_script_embed() {
 
   local temp_sh2="$TEMP_DIR"/6d0f004.sh
   embed_minified_sub ./testdata/original2.sh >"$temp_sh2"
-  cat -n "$temp_sh2"
   sh "$temp_sh2" | grep -q "Version: 123.45.6"
+
+  local temp_sh3="./testdata/temp-$$"
+  embed_minified_sub ./testdata/original3.sh >"$temp_sh3"
+  # cat -n "$temp_sh3"
+  sh "$temp_sh3" | grep -q "hello"
+  rm -f "$temp_sh3"
 }

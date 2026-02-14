@@ -41,6 +41,26 @@ def _minify_jq(lines: Iterator[str]) -> Iterator[str]:
         line = re.sub(r'^\s+', ' ', line)
         yield line
 
+def _minify_py(lines: Iterator[str]) -> Iterator[str]:
+    """Apply py-specific minification rules.
+
+    Note: This only works for Python code written in a one-liner-friendly style:
+    - No multi-line control structures (use ternary, list comprehensions, etc.)
+    - Single statements per line
+    """
+    for line in lines:
+        # 1. Remove comment lines (but not inline comments)
+        if re.match(r'^\s*#', line):
+            continue
+        # 2. Remove all leading whitespace
+        line = re.sub(r'^\s*', '', line)
+        # 3. Skip empty lines
+        if not line:
+            continue
+        # 4. Append semicolon if line doesn't end with : or ; (statement separator)
+        if not line.endswith(':') and not line.endswith(';'):
+            line = line + ';'
+        yield line
 
 def minify(path: Path) -> str:
     """
@@ -62,6 +82,8 @@ def minify(path: Path) -> str:
                 lines = _minify_awk(lines)
             case '.jq':
                 lines = _minify_jq(lines)
+            case '.py':
+                lines = _minify_py(lines)
 
         # Join all lines without separator
         return ''.join(lines)
