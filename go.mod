@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/spf13/pflag v1.0.10
 	github.com/yuin/gopher-lua v1.1.1
-	golang.org/x/term v0.39.0
+	golang.org/x/term v0.40.0
 )
 
 require (
@@ -29,5 +29,5 @@ require (
 require (
 	github.com/johnkerl/miller/v6 v6.16.0
 	github.com/knaka/go-utils v0.1.14
-	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
 )
